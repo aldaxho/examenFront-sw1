@@ -1,0 +1,25 @@
+/* src/nodes/ClassNodeWidget.css */
+.class-node {
+    padding: 10px;
+    border: 1px solid #333;
+    border-radius: 5px;
+    text-align: center;
+    width: 150px;
+  }
+  
+  .class-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+  }
+  
+  .class-atributos,
+  .class-metodos {
+    margin-top: 5px;
+  }
+  
+  .class-atributos ul,
+  .class-metodos ul {
+    padding: 0;
+    list-style: none;
+  }
+  

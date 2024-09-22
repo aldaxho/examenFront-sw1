@@ -1,24 +1,30 @@
-import logo from './logo.svg';
-import './App.css';
+// src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom'; // Importa Routes en lugar de Switch
+import Home from './pages/Home';
+import Login from './components/Login';
+import Register from './components/Register';
+import Dashboard from './pages/Dashboard';
+import DiagramaForm from './components/DiagramaForm'; // Importar DiagramaForm
+import DiagramaEditor from './components/DiagramaEditor'; // Importar DiagramaEditor
+import EditorDiagrama from './pages/EditorDiagrama'; // Importar la vista del editor de diagramas
+
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <Router>
+      <Routes> {/* Usamos Routes en lugar de Switch */}
+        <Route path="/login" element={<Login />} /> {/* Usamos element en lugar de component */}
+        <Route path="/register" element={<Register />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/diagramas/crear" element={<DiagramaForm />} /> {/* Ruta para crear */}
+        <Route path="/diagramas/editar/:id" element={<DiagramaForm />} /> {/* Ruta para editar */}
+        <Route path="/diagramas/editor/:id" element={<DiagramaEditor />} /> {/* Ruta para el editor */}
+        <Route path="/editor-diagrama/:id" element={<EditorDiagrama />} /> {/* Ruta para el editor */}
+     
+        <Route path="/" element={<Home />} />
+      </Routes>
+    </Router>
   );
 }
 
