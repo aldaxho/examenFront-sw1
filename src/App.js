@@ -1,5 +1,7 @@
 // src/App.js
 import React from 'react';
+import { Buffer } from 'buffer';
+
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom'; // Importa Routes en lugar de Switch
 import Home from './pages/Home';
 import Login from './components/Login';
