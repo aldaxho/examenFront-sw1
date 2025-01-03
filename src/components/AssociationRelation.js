@@ -45,7 +45,9 @@ const AssociationRelation = ({
   const getLineStyle = (type) => {
     switch (type) {
       case 'Composición':
-        return { stroke: 'black', strokeWidth: 2, markerEnd: 'url(#diamond)' }; // Diamante relleno
+        return { stroke: 'black', strokeWidth: 2, markerEnd: 'url(#diamondFilled)' }; // Diamante relleno
+      case 'Agregación':
+        return { stroke: 'black', strokeWidth: 2, markerEnd: 'url(#diamondEmpty)' }; // Diamante vacío
       case 'Generalización':
         return { stroke: 'black', strokeWidth: 2, markerEnd: 'url(#arrow)' }; // Flecha vacía
       case 'Muchos a Muchos':
@@ -54,6 +56,7 @@ const AssociationRelation = ({
         return { stroke: 'black', strokeWidth: 2 }; // Asociación
     }
   };
+  
 
   return (
     <svg
@@ -89,6 +92,18 @@ const AssociationRelation = ({
         >
           <path d="M0,5 L5,0 L10,5 L5,10 z" fill="black" />
         </marker>
+        <marker
+        id="diamondEmpty"
+        markerWidth="10"
+        markerHeight="10"
+        refX="10"
+        refY="5"
+        orient="auto"
+        markerUnits="strokeWidth"
+      >
+        <path d="M0,5 L5,0 L10,5 L5,10 z" fill="white" stroke="black" />
+      </marker>
+
       </defs>
 
       {/* Dibuja una única línea con el estilo adecuado */}

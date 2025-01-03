@@ -32,39 +32,8 @@ const EditorDiagrama = () => {
   const [jsonToSend, setJsonToSend] = useState('');
   const [isLoading, setIsLoading] = useState(false); // Estado de "Cargando"
   const [downloadLink, setDownloadLink] = useState(null); // Almacena el enlace de descarga
-
-  const enviarJSON = () => {
-    // Aquí generamos el JSON actual de las clases y relaciones del diagrama
-    const diagramaJSON = {
-      classes,
-      relations,
-    };
-  
-    // Llamamos a la función para enviar (simular) el JSON
-    enviarJSONyGenerarBackend(diagramaJSON);
-  };
-  
-  // Función para abrir el modal con el JSON a enviar
-  const mostrarJSONEnModal = () => {
-    const diagramaJSON = {
-      classes,
-      relations,
-    };
-
-    setJsonToSend(JSON.stringify(diagramaJSON, null, 2)); // Guardar el JSON en el estado
-    setIsModalOpen(true); // Abrir el modal
-  };
-
-  // Función para cerrar el modal
-  const cerrarModal = () => {
-    setIsModalOpen(false);
-  };
-
-  // Función para confirmar y enviar el JSON
-  const confirmarEnvioJSON = () => {
-    setIsModalOpen(false);
-    enviarJSONyGenerarBackend(JSON.parse(jsonToSend)); // Llamar a la función para enviar el JSON
-  };
+  const [diagramaId, setDiagramaId] = useState('');
+  const [archivoZip, setArchivoZip] = useState(null);
 
   
   
@@ -137,6 +106,7 @@ const EditorDiagrama = () => {
       socketRef.current.disconnect();
     };
   }, [id]);
+
   useEffect(() => {
     if (engineRef.current) {
       engineRef.current.setModel(model);
@@ -254,6 +224,8 @@ const obtenerUsuarios = async () => {
         // Aquí es donde llamas a la función según el tipo de relación
       if (relationType === 'Composición') {
         agregarComposicion(); // Cambia el tipo de relación aquí
+      } else if (relationType === 'Agregacion'){
+        agregarAgregacion();
       } else if (relationType === 'Generalización') {
         agregarGeneralizacion(); // Cambia el tipo de relación aquí
       } else if (relationType === 'Muchos a Muchos') {
@@ -323,7 +295,34 @@ const obtenerUsuarios = async () => {
       });
     }
   };
+
+  const agregarAgregacion = () => {
+    if (selectedClass && targetClass) {
+      const newRelation = {
+        id: `rel-${Date.now()}`,
+        source: selectedClass.id,
+        target: targetClass.id,
+        type: 'Agregación',
+        multiplicidadOrigen: '1', // En una agregación, la clase origen también tiene multiplicidad fija de 1
+        multiplicidadDestino: '', // Puede variar según el caso
+        marker: 'diamondEmpty', // Rombo vacío para la agregación
+      };
   
+      setRelations((prevRelations) => [...prevRelations, newRelation]);
+      setSelectedClass(null);
+      setTargetClass(null);
+      setIsCreatingRelation(false);
+  
+      // Emitir evento al servidor
+      socketRef.current.emit('add-relation', {
+        roomId: id,
+        newRelation,
+      });
+    }
+  };
+  
+
+
   const agregarGeneralizacion = () => {
     if (selectedClass && targetClass) {
       // La generalización no necesita multiplicidades, por lo tanto, las omitimos
@@ -447,150 +446,166 @@ const obtenerUsuarios = async () => {
     setZoomLevel((prevZoom) => Math.max(prevZoom - 0.1, 0.5));
   };
 
-  // Función para generar UUIDs únicos
-  const generateUUID = () => {
-    // Generar un UUID de 36 caracteres
-    return 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'.replace(/[x]/g, function () {
-      return Math.floor(Math.random() * 16).toString(16);
-    }).toUpperCase();
-  };
-  const exportarXMI = () => {
-    const xmlDoc = document.implementation.createDocument(null, null, null);
-  
-    // Crear el elemento raíz XMI
-    const xmiElement = xmlDoc.createElement('xmi:XMI');
-    xmiElement.setAttribute('xmi:version', '2.1');
-    xmiElement.setAttribute('xmlns:xmi', 'http://schema.omg.org/spec/XMI/2.1');
-    xmiElement.setAttribute('xmlns:uml', 'http://schema.omg.org/spec/UML/2.1');
-  
-    // XMI Documentation
-    const xmiDocumentation = xmlDoc.createElement('xmi:Documentation');
-    xmiDocumentation.setAttribute('exporter', 'Tu Aplicación');
-    xmiDocumentation.setAttribute('exporterVersion', '1.0');
-    xmiElement.appendChild(xmiDocumentation);
-  
-    // Crear el modelo UML
-    const umlModel = xmlDoc.createElement('uml:Model');
-    umlModel.setAttribute('xmi:type', 'uml:Model');
-    umlModel.setAttribute('name', titulo || 'ModeloExportado');
-    umlModel.setAttribute('visibility', 'public');
-  
-    // Crear paquete
-    const umlPackage = xmlDoc.createElement('packagedElement');
-    umlPackage.setAttribute('xmi:type', 'uml:Package');
-    umlPackage.setAttribute('xmi:id', `pkg_${generateUUID()}`);
-    umlPackage.setAttribute('name', 'PaqueteExportado');
-    umlPackage.setAttribute('visibility', 'public');
-  
-    // Agregar clases
-    classes.forEach((cls) => {
-      const classElement = xmlDoc.createElement('packagedElement');
-      classElement.setAttribute('xmi:type', 'uml:Class');
-      classElement.setAttribute('xmi:id', cls.id);
-      classElement.setAttribute('name', cls.name);
-      classElement.setAttribute('visibility', 'public');
-  
-      // Agregar atributos
-      cls.attributes.forEach((attr) => {
-        const attributeElement = xmlDoc.createElement('ownedAttribute');
-        attributeElement.setAttribute('xmi:type', 'uml:Property');
-        attributeElement.setAttribute('xmi:id', `attr_${generateUUID()}`);
-        attributeElement.setAttribute('name', attr);
-        attributeElement.setAttribute('visibility', 'private');
-        classElement.appendChild(attributeElement);
-      });
-  
-      // Agregar métodos
-      cls.methods.forEach((method) => {
-        const methodElement = xmlDoc.createElement('ownedOperation');
-        methodElement.setAttribute('xmi:type', 'uml:Operation');
-        methodElement.setAttribute('xmi:id', `op_${generateUUID()}`);
-        methodElement.setAttribute('name', method);
-        methodElement.setAttribute('visibility', 'public');
-        classElement.appendChild(methodElement);
-      });
-  
-      umlPackage.appendChild(classElement);
+// Función para generar un UUID único
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+  });
+};
+
+const exportarXMI = () => {
+  const xmlDoc = document.implementation.createDocument(null, null, null);
+
+  // Crear el elemento raíz XMI
+  const xmiElement = xmlDoc.createElement('xmi:XMI');
+  xmiElement.setAttribute('xmi:version', '2.1');
+  xmiElement.setAttribute('xmlns:xmi', 'http://schema.omg.org/spec/XMI/2.1');
+  xmiElement.setAttribute('xmlns:uml', 'http://schema.omg.org/spec/UML/2.1');
+
+  // XMI Documentation
+  const xmiDocumentation = xmlDoc.createElement('xmi:Documentation');
+  xmiDocumentation.setAttribute('exporter', 'Tu Aplicación');
+  xmiDocumentation.setAttribute('exporterVersion', '1.0');
+  xmiElement.appendChild(xmiDocumentation);
+
+  // Crear el modelo UML
+  const umlModel = xmlDoc.createElement('uml:Model');
+  umlModel.setAttribute('xmi:type', 'uml:Model');
+  umlModel.setAttribute('name', titulo || 'ModeloExportado');
+  umlModel.setAttribute('visibility', 'public');
+
+  // Crear paquete
+  const umlPackage = xmlDoc.createElement('packagedElement');
+  umlPackage.setAttribute('xmi:type', 'uml:Package');
+  umlPackage.setAttribute('xmi:id', `pkg_${generateUUID()}`);
+  umlPackage.setAttribute('name', 'PaqueteExportado');
+  umlPackage.setAttribute('visibility', 'public');
+
+  // Agregar clases
+  classes.forEach((cls) => {
+    const classElement = xmlDoc.createElement('packagedElement');
+    classElement.setAttribute('xmi:type', 'uml:Class');
+    classElement.setAttribute('xmi:id', cls.id);
+    classElement.setAttribute('name', cls.name);
+    classElement.setAttribute('visibility', 'public');
+
+    // Agregar atributos
+    cls.attributes.forEach((attr) => {
+      const attributeElement = xmlDoc.createElement('ownedAttribute');
+      attributeElement.setAttribute('xmi:type', 'uml:Property');
+      attributeElement.setAttribute('xmi:id', `attr_${generateUUID()}`);
+      attributeElement.setAttribute('name', attr);
+      attributeElement.setAttribute('visibility', 'private');
+      classElement.appendChild(attributeElement);
     });
-  
-    // Agregar las relaciones
-    relations.forEach((rel) => {
-      if (rel.type === 'Generalización' || rel.type === 'Generalize') {
-        // Generalización (Generalize)
-        const generalizationElement = xmlDoc.createElement('generalization');
-        generalizationElement.setAttribute('xmi:type', 'uml:Generalization');
-        generalizationElement.setAttribute('xmi:id', `gen_${generateUUID()}`);
-        generalizationElement.setAttribute('general', rel.target); // Clase padre
-        generalizationElement.setAttribute('specific', rel.source); // Clase hija
-        umlPackage.appendChild(generalizationElement);
-  
-      } else if (rel.type === 'Muchos a Muchos' || rel.type === 'Association Class') {
-        // Relación muchos a muchos con clase intermedia (Association Class)
-        const associationClassElement = xmlDoc.createElement('packagedElement');
-        associationClassElement.setAttribute('xmi:type', 'uml:AssociationClass');
-        associationClassElement.setAttribute('xmi:id', `assoc_${generateUUID()}`);
-        associationClassElement.setAttribute('name', 'ClaseIntermedia'); // Nombre de la clase intermedia
-  
-        // Definir los extremos de la relación
-        const memberEnd1 = xmlDoc.createElement('memberEnd');
-        memberEnd1.setAttribute('xmi:idref', rel.source);
-        associationClassElement.appendChild(memberEnd1);
-  
-        const memberEnd2 = xmlDoc.createElement('memberEnd');
-        memberEnd2.setAttribute('xmi:idref', rel.target);
-        associationClassElement.appendChild(memberEnd2);
-  
-        umlPackage.appendChild(associationClassElement);
-  
-      } else {
-        // Asociación o Composición
-        const associationElement = xmlDoc.createElement('packagedElement');
-        associationElement.setAttribute('xmi:type', 'uml:Association');
-        associationElement.setAttribute('xmi:id', rel.id);
-        associationElement.setAttribute('visibility', 'public');
-  
-        // Crear los extremos de la relación
-        const ownedEnd1 = xmlDoc.createElement('ownedEnd');
-        ownedEnd1.setAttribute('xmi:type', 'uml:Property');
-        ownedEnd1.setAttribute('xmi:id', `end1_${generateUUID()}`);
-        ownedEnd1.setAttribute('aggregation', rel.type === 'Composición' ? 'composite' : 'none');
-        ownedEnd1.setAttribute('type', rel.source);
-        associationElement.appendChild(ownedEnd1);
-  
-        const ownedEnd2 = xmlDoc.createElement('ownedEnd');
-        ownedEnd2.setAttribute('xmi:type', 'uml:Property');
-        ownedEnd2.setAttribute('xmi:id', `end2_${generateUUID()}`);
-        ownedEnd2.setAttribute('aggregation', 'none');
-        ownedEnd2.setAttribute('type', rel.target);
-        associationElement.appendChild(ownedEnd2);
-  
-        // Definir los miembros finales de la relación
-        const memberEnd1 = xmlDoc.createElement('memberEnd');
-        memberEnd1.setAttribute('xmi:idref', ownedEnd1.getAttribute('xmi:id'));
-        associationElement.appendChild(memberEnd1);
-  
-        const memberEnd2 = xmlDoc.createElement('memberEnd');
-        memberEnd2.setAttribute('xmi:idref', ownedEnd2.getAttribute('xmi:id'));
-        associationElement.appendChild(memberEnd2);
-  
-        umlPackage.appendChild(associationElement);
-      }
+
+    // Agregar métodos
+    cls.methods.forEach((method) => {
+      const methodElement = xmlDoc.createElement('ownedOperation');
+      methodElement.setAttribute('xmi:type', 'uml:Operation');
+      methodElement.setAttribute('xmi:id', `op_${generateUUID()}`);
+      methodElement.setAttribute('name', method);
+      methodElement.setAttribute('visibility', 'public');
+      classElement.appendChild(methodElement);
     });
-  
-    umlModel.appendChild(umlPackage);
-    xmiElement.appendChild(umlModel);
-  
-    // Serializar y descargar
-    const serializer = new XMLSerializer();
-    const xmiString = serializer.serializeToString(xmiElement);
-  
-    const blob = new Blob([xmiString], { type: 'application/xml' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${titulo || 'diagrama'}.xmi`;
-    link.click();
-  };
+
+    umlPackage.appendChild(classElement);
+  });
+
+  // Agregar las relaciones, incluyendo AssociationClass (Clase Intermedia)
+  relations.forEach((rel) => {
+    if (rel.type === 'Association Class') {
+      // Relación muchos a muchos con clase intermedia (Association Class)
+      const associationClassElement = xmlDoc.createElement('packagedElement');
+      associationClassElement.setAttribute('xmi:type', 'uml:AssociationClass');
+      associationClassElement.setAttribute('xmi:id', rel.id);
+      associationClassElement.setAttribute('name', 'ClaseIntermedia'); // Nombre de la clase intermedia
+
+      // Crear los extremos de la relación con ownedEnds
+      const ownedEnd1 = xmlDoc.createElement('ownedEnd');
+      ownedEnd1.setAttribute('xmi:type', 'uml:Property');
+      ownedEnd1.setAttribute('xmi:id', `end1_${generateUUID()}`);
+      ownedEnd1.setAttribute('type', rel.source);
+      associationClassElement.appendChild(ownedEnd1);
+
+      const ownedEnd2 = xmlDoc.createElement('ownedEnd');
+      ownedEnd2.setAttribute('xmi:type', 'uml:Property');
+      ownedEnd2.setAttribute('xmi:id', `end2_${generateUUID()}`);
+      ownedEnd2.setAttribute('type', rel.target);
+      associationClassElement.appendChild(ownedEnd2);
+
+      // Relacionar la clase intermedia con las dos clases principales (source y target)
+      const memberEnd1 = xmlDoc.createElement('memberEnd');
+      memberEnd1.setAttribute('xmi:idref', ownedEnd1.getAttribute('xmi:id'));
+      associationClassElement.appendChild(memberEnd1);
+
+      const memberEnd2 = xmlDoc.createElement('memberEnd');
+      memberEnd2.setAttribute('xmi:idref', ownedEnd2.getAttribute('xmi:id'));
+      associationClassElement.appendChild(memberEnd2);
+
+      // Asegurar que la clase intermedia esté visible en el diagrama
+      const classIntermediaElement = xmlDoc.createElement('packagedElement');
+      classIntermediaElement.setAttribute('xmi:type', 'uml:Class');
+      classIntermediaElement.setAttribute('xmi:id', `classInter_${generateUUID()}`);
+      classIntermediaElement.setAttribute('name', 'ClaseIntermedia');
+      classIntermediaElement.setAttribute('visibility', 'public');
+      umlPackage.appendChild(classIntermediaElement);
+
+      umlPackage.appendChild(associationClassElement);
+
+    } else {
+      // Asociación o Composición
+      const associationElement = xmlDoc.createElement('packagedElement');
+      associationElement.setAttribute('xmi:type', 'uml:Association');
+      associationElement.setAttribute('xmi:id', rel.id);
+      associationElement.setAttribute('visibility', 'public');
+
+      // Crear los extremos de la relación
+      const ownedEnd1 = xmlDoc.createElement('ownedEnd');
+      ownedEnd1.setAttribute('xmi:type', 'uml:Property');
+      ownedEnd1.setAttribute('xmi:id', `end1_${generateUUID()}`);
+      ownedEnd1.setAttribute('aggregation', rel.type === 'Composición' ? 'composite' : 'none');
+      ownedEnd1.setAttribute('type', rel.source);
+      associationElement.appendChild(ownedEnd1);
+
+      const ownedEnd2 = xmlDoc.createElement('ownedEnd');
+      ownedEnd2.setAttribute('xmi:type', 'uml:Property');
+      ownedEnd2.setAttribute('xmi:id', `end2_${generateUUID()}`);
+      ownedEnd2.setAttribute('aggregation', 'none');
+      ownedEnd2.setAttribute('type', rel.target);
+      associationElement.appendChild(ownedEnd2);
+
+      // Definir los miembros finales de la relación
+      const memberEnd1 = xmlDoc.createElement('memberEnd');
+      memberEnd1.setAttribute('xmi:idref', ownedEnd1.getAttribute('xmi:id'));
+      associationElement.appendChild(memberEnd1);
+
+      const memberEnd2 = xmlDoc.createElement('memberEnd');
+      memberEnd2.setAttribute('xmi:idref', ownedEnd2.getAttribute('xmi:id'));
+      associationElement.appendChild(memberEnd2);
+
+      umlPackage.appendChild(associationElement);
+    }
+  });
+
+  umlModel.appendChild(umlPackage);
+  xmiElement.appendChild(umlModel);
+
+  // Serializar y descargar
+  const serializer = new XMLSerializer();
+  const xmiString = serializer.serializeToString(xmiElement);
+
+  const blob = new Blob([xmiString], { type: 'application/xml' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${titulo || 'diagrama'}.xmi`;
+  link.click();
+};
+
+
   
   const handleFileImport = (event) => {
     const file = event.target.files[0];
@@ -753,77 +768,60 @@ const obtenerUsuarios = async () => {
 
 
 
-  const Modal = ({ isOpen, onClose, jsonContent, onConfirm }) => {
-    if (!isOpen) return null;
-  
-    return (
-      <div style={modalStyle}>
-        <div style={modalContentStyle}>
-          <h3>Revisa el JSON antes de enviarlo</h3>
-          <pre style={preStyle}>{jsonContent}</pre>
-          <button onClick={onConfirm}>Confirmar y Enviar</button>
-          <button onClick={onClose}>Cancelar</button>
-        </div>
-      </div>
-    );
+  // Función para abrir el modal
+  const abrirModal = () => {
+    setIsModalOpen(true);
   };
- // Estilos para el modal
-const modalStyle = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 1000,
-};
 
-const modalContentStyle = {
-  backgroundColor: '#fff',
-  padding: '20px',
-  borderRadius: '10px',
-  width: '80%',
-  maxHeight: '80%',
-  overflowY: 'auto',
-};
+  // Función para cerrar el modal
+  const cerrarModal = () => {
+    setIsModalOpen(false);
+  };
 
-const preStyle = {
-  backgroundColor: '#f4f4f4',
-  padding: '10px',
-  borderRadius: '5px',
-  maxHeight: '300px',
-  overflowY: 'scroll',
-};
-const enviarJSONyGenerarBackend = async (diagramaJSON) => {
-  try {
-    setIsLoading(true); // Mostrar el estado de cargando
+  // Función para manejar el archivo seleccionado
+  const handleArchivoChange = (e) => {
+    setArchivoZip(e.target.files[0]);
+  };
 
-    // Hacer la solicitud al backend para generar el código de Spring Boot y recibir un archivo ZIP
-    const response = await axios.post('http://localhost:3001/generate-backend', { diagramaJSON }, {
-      responseType: 'blob' // Especifica que la respuesta es un archivo binario (ZIP)
-    });
+  // Función para enviar el ID del diagrama y el archivo al backend
+  const enviarIDyGenerarBackend = async () => {
+    if (!archivoZip) {
+      alert('Por favor, selecciona un archivo zip.');
+      return;
+    }
 
-    // Crear un archivo Blob con el contenido del archivo ZIP
-    const blob = new Blob([response.data], { type: 'application/zip' });
+    const formData = new FormData();
+    formData.append('diagramaId', diagramaId);
+    formData.append('archivoZip', archivoZip);
 
-    // Generar un enlace de descarga para el archivo ZIP
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'spring-boot-backend.zip'; // Nombre del archivo a descargar
-    document.body.appendChild(a); // Agregar el enlace al DOM
-    a.click(); // Simular el clic para descargar
-    document.body.removeChild(a); // Remover el enlace del DOM
+    try {
+      setIsLoading(true); // Mostrar estado de cargando
 
-  } catch (error) {
-    console.error('Error al generar el backend:', error);
-  } finally {
-    setIsLoading(false); // Ocultar el estado de cargando siempre, incluso si ocurre un error
-  }
-};
+      // Enviar el formulario con el archivo y el ID del diagrama
+      const response = await axios.post('http://localhost:3001/api/generar-backend', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.status === 200) {
+        console.log('Backend generado con éxito:', response.data);
+        alert('Backend generado con éxito');
+        // Aquí puedes manejar la ruta o el resultado
+      } else {
+        alert('Error al generar el backend');
+      }
+    } catch (error) {
+      console.error('Error al generar el backend:', error);
+      alert('Ocurrió un error al generar el backend');
+    } finally {
+      setIsLoading(false); // Ocultar el estado de cargando
+      cerrarModal(); // Cerrar el modal después de enviar
+    }
+  };
+
+// Llamar a la función desde el frontend, pasándole el ID del diagrama
+
 
 
   const parseMultiplicity = (multiplicidad) => {
@@ -880,6 +878,8 @@ const enviarJSONyGenerarBackend = async (diagramaJSON) => {
   const canvasWidth = classes.length > 0 ? Math.max(...classes.map(cls => cls.x)) + 500 : 1000;
   const canvasHeight = classes.length > 0 ? Math.max(...classes.map(cls => cls.y)) + 500 : 1000;
 
+
+
   if (loading || !engineRef.current) return <div>Cargando...</div>;
 
   return (
@@ -889,6 +889,7 @@ const enviarJSONyGenerarBackend = async (diagramaJSON) => {
 {/*       <button onClick={() => setIsCreatingRelation(true)}>asociacion</button> */}
       <button onClick={() => { setRelationType('Asociación'); setIsCreatingRelation(true); }}>Crear Asociasion</button>
       <button onClick={() => { setRelationType('Composición'); setIsCreatingRelation(true); }}>Crear Composición</button>
+      <button onClick={() => { setRelationType('Agregacion'); setIsCreatingRelation(true); }}>Crear Agregacion</button>
 <button onClick={() => { setRelationType('Generalización'); setIsCreatingRelation(true); }}>Crear Generalización</button>
 <button onClick={() => { setRelationType('Muchos a Muchos'); setIsCreatingRelation(true); }}>Crear Muchos a Muchos</button>
       <button onClick={guardarDiagrama}>Guardar Diagrama</button>
@@ -896,30 +897,31 @@ const enviarJSONyGenerarBackend = async (diagramaJSON) => {
       <button onClick={handleZoomOut}>Disminuir Zoom</button>
       <button onClick={exportarXMI}>Exportar a XMI</button>
       <button onClick={() => diagramaCompleto && downloadJSON(diagramaCompleto)}>
-      Descargar JSON
-    </button>
-    <button onClick={mostrarJSONEnModal}>Revisar y Enviar JSON</button>
+      Descargar JSON</button>
+    
+      <div>
+      {/* Botón para abrir el modal */}
+      <button onClick={abrirModal}>
+        Generar Backend
+      </button>
 
-      {/* Mostrar spinner o mensaje de cargando mientras se genera el backend */}
-      {isLoading && <p>Generando Spring Boot... Por favor espera.</p>}
-
-      {/* Renderizar el modal con el JSON y el botón para confirmar */}
-{/* Renderizamos el modal */}
-<Modal
-  isOpen={isModalOpen}
-  onClose={cerrarModal}
-  jsonContent={jsonToSend}
-  onConfirm={confirmarEnvioJSON}
-/>
-
+      {/* Modal para cargar archivo */}
+      {isModalOpen && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Subir archivo base</h2>
+            <input type="file" accept=".zip" onChange={handleArchivoChange} />
+            <br />
+            <button onClick={enviarIDyGenerarBackend} disabled={isLoading}>
+              {isLoading ? 'Generando...' : 'Generar Backend'}
+            </button>
+            <button onClick={cerrarModal}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
    
-      <input
-          type="file"
-          accept=".xmi"
-          onChange={handleFileImport}
-          style={{ marginRight: '10px' }}
-        />
-
+      
 
       <button onClick={generarCodigoInvitacion}>Generar Código de Invitación</button>
       <button onClick={obtenerUsuarios}>Ver Usuarios</button>     
@@ -1003,5 +1005,4 @@ const enviarJSONyGenerarBackend = async (diagramaJSON) => {
     </div>
   );
 };
-
 export default EditorDiagrama;
