@@ -1,7 +1,25 @@
 {
   "name": "diagramador-frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Editor de Diagramas UML con IA Assistant integrado",
+  "keywords": [
+    "uml",
+    "diagrams",
+    "ai",
+    "react",
+    "editor"
+  ],
+  "author": "Tu Nombre",
+  "license": "MIT",
   "private": true,
+  "homepage": ".",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tu-usuario/examenFront-sw1"
+  },
+  "bugs": {
+    "url": "https://github.com/tu-usuario/examenFront-sw1/issues"
+  },
   "dependencies": {
     "@craco/craco": "^7.1.0",
     "@projectstorm/react-canvas-core": "^7.0.3",
@@ -14,6 +32,7 @@
     "dotenv": "^16.4.5",
     "js2xmlparser": "^5.0.0",
     "jwt-decode": "^4.0.0",
+    "lucide-react": "^0.543.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-flow-renderer": "^10.3.17",
@@ -32,7 +51,10 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "analyze": "npm run build && npx webpack-bundle-analyzer build/static/js/*.js"
   },
   "eslintConfig": {
     "extends": [
