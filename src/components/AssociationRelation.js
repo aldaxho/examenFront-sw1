@@ -264,10 +264,18 @@ const AssociationRelation = ({
     onDelete(relation.id);
   };
 
-  // Calcular coordenadas de la línea
+  // Calcular coordenadas de la línea - MEJORADO
   const calculateLineCoordinates = () => {
     const CLASS_WIDTH = 300;
     const CLASS_HEIGHT = 150;
+
+    // Verificar que las clases tengan coordenadas válidas
+    if (!sourceClass || !targetClass || 
+        typeof sourceClass.x !== 'number' || typeof sourceClass.y !== 'number' ||
+        typeof targetClass.x !== 'number' || typeof targetClass.y !== 'number') {
+      console.warn('Coordenadas inválidas para las clases:', { sourceClass, targetClass });
+      return { startX: 0, startY: 0, endX: 100, endY: 100 };
+    }
 
     const sourceCenter = {
       x: sourceClass.x + CLASS_WIDTH / 2,
@@ -278,31 +286,43 @@ const AssociationRelation = ({
       y: targetClass.y + CLASS_HEIGHT / 2
     };
 
-    const angle = Math.atan2(targetCenter.y - sourceCenter.y, targetCenter.x - sourceCenter.x);
+    // Calcular ángulo entre las clases
+    const deltaX = targetCenter.x - sourceCenter.x;
+    const deltaY = targetCenter.y - sourceCenter.y;
+    const angle = Math.atan2(deltaY, deltaX);
 
     let startX, startY, endX, endY;
 
-    // Para la clase de origen - cálculo mejorado
-    if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
-      startX = sourceCenter.x + (Math.cos(angle) > 0 ? CLASS_WIDTH / 2 : -CLASS_WIDTH / 2);
-      startY = sourceCenter.y + Math.tan(angle) * (startX - sourceCenter.x);
+    // Calcular puntos de conexión en los bordes de las clases
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    // Para la clase origen
+    if (Math.abs(cos) > Math.abs(sin)) {
+      // Conectar por los lados izquierdo/derecho
+      startX = sourceCenter.x + (cos > 0 ? CLASS_WIDTH / 2 : -CLASS_WIDTH / 2);
+      startY = sourceCenter.y + sin * (CLASS_WIDTH / 2) / Math.abs(cos);
     } else {
-      startY = sourceCenter.y + (Math.sin(angle) > 0 ? CLASS_HEIGHT / 2 : -CLASS_HEIGHT / 2);
-      startX = sourceCenter.x + (startY - sourceCenter.y) / Math.tan(angle);
+      // Conectar por los lados superior/inferior
+      startY = sourceCenter.y + (sin > 0 ? CLASS_HEIGHT / 2 : -CLASS_HEIGHT / 2);
+      startX = sourceCenter.x + cos * (CLASS_HEIGHT / 2) / Math.abs(sin);
     }
 
-    // Para la clase de destino - cálculo mejorado
-    if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
-      endX = targetCenter.x + (Math.cos(angle) < 0 ? CLASS_WIDTH / 2 : -CLASS_WIDTH / 2);
-      endY = targetCenter.y + Math.tan(angle) * (endX - targetCenter.x);
+    // Para la clase destino
+    if (Math.abs(cos) > Math.abs(sin)) {
+      // Conectar por los lados izquierdo/derecho
+      endX = targetCenter.x + (cos < 0 ? CLASS_WIDTH / 2 : -CLASS_WIDTH / 2);
+      endY = targetCenter.y + sin * (CLASS_WIDTH / 2) / Math.abs(cos);
     } else {
-      endY = targetCenter.y + (Math.sin(angle) < 0 ? CLASS_HEIGHT / 2 : -CLASS_HEIGHT / 2);
-      endX = targetCenter.x + (endY - targetCenter.y) / Math.tan(angle);
+      // Conectar por los lados superior/inferior
+      endY = targetCenter.y + (sin < 0 ? CLASS_HEIGHT / 2 : -CLASS_HEIGHT / 2);
+      endX = targetCenter.x + cos * (CLASS_HEIGHT / 2) / Math.abs(sin);
     }
 
-    // Verificar que las coordenadas sean válidas
-    if (isNaN(startX) || isNaN(startY) || isNaN(endX) || isNaN(endY)) {
-      // Fallback a coordenadas simples
+    // Verificar que las coordenadas sean válidas y finitas
+    if (!Number.isFinite(startX) || !Number.isFinite(startY) || 
+        !Number.isFinite(endX) || !Number.isFinite(endY)) {
+      console.warn('Coordenadas calculadas no son finitas, usando fallback');
       return {
         startX: sourceCenter.x,
         startY: sourceCenter.y,
@@ -326,6 +346,7 @@ const AssociationRelation = ({
         width: '100%',
         height: '100%',
         zIndex: 50,
+        overflow: 'visible',
       }}
     >
       <defs>
@@ -461,7 +482,18 @@ const AssociationRelation = ({
         )}
 
         {/* Etiquetas de cardinalidad - posicionamiento mejorado */}
-        <g transform={`translate(${Math.max(0, sourceClass.x + 50)}, ${Math.max(0, sourceClass.y + 20)})`}>
+        <g transform={`translate(${startX - 25}, ${startY - 10})`}>
+          <rect
+            x="-5"
+            y="-8"
+            width="60"
+            height="20"
+            fill="white"
+            rx="4"
+            opacity="0.9"
+            stroke="#e2e8f0"
+            strokeWidth="1"
+          />
           {editModeOrigen ? (
             <RelationInput width="50" height="24">
               <input
@@ -479,7 +511,18 @@ const AssociationRelation = ({
           )}
         </g>
 
-        <g transform={`translate(${Math.max(0, targetClass.x - 30)}, ${Math.max(0, targetClass.y + 20)})`}>
+        <g transform={`translate(${endX - 25}, ${endY - 10})`}>
+          <rect
+            x="-5"
+            y="-8"
+            width="60"
+            height="20"
+            fill="white"
+            rx="4"
+            opacity="0.9"
+            stroke="#e2e8f0"
+            strokeWidth="1"
+          />
           {editModeDestino ? (
             <RelationInput width="50" height="24">
               <input

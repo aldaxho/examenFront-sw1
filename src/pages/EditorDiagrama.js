@@ -645,14 +645,18 @@ const EditorDiagrama = () => {
     setCanvasOffset({ x: newOffsetX, y: newOffsetY });
   }, [classes]);
 
-  // Ajustar vista automáticamente después de cargar el diagrama
+  // Ajustar vista automáticamente solo al cargar el diagrama por primera vez
   useEffect(() => {
     if (classes.length > 0 && !isLoading) {
-      setTimeout(() => {
-        fitToBounds();
-      }, 500);
+      // Solo centrar automáticamente si es la primera carga (no cuando se agregan clases)
+      const isFirstLoad = classes.length === 1 && classes[0].name === 'Nueva Clase';
+      if (!isFirstLoad) {
+        setTimeout(() => {
+          fitToBounds();
+        }, 500);
+      }
     }
-  }, [classes.length, isLoading, fitToBounds]);
+  }, [isLoading, fitToBounds]); // Removido classes.length de las dependencias
 
 
   const handleClassUpdate = (classId, updatedData) => {
@@ -687,11 +691,42 @@ const EditorDiagrama = () => {
 
   const agregarClase = () => {
     const newId = `class-${Date.now()}`;
+    
+    // Calcular posición inteligente basada en las clases existentes
+    let newX = 200;
+    let newY = 200;
+    
+    if (classes.length > 0) {
+      // Encontrar una posición libre cerca del centro del viewport actual
+      const viewportCenterX = -canvasOffset.x / zoomLevel + (viewportRef.current?.clientWidth || 800) / 2 / zoomLevel;
+      const viewportCenterY = -canvasOffset.y / zoomLevel + (viewportRef.current?.clientHeight || 600) / 2 / zoomLevel;
+      
+      // Usar el centro del viewport como referencia
+      newX = Math.max(50, viewportCenterX - 150);
+      newY = Math.max(50, viewportCenterY - 75);
+      
+      // Evitar solapamiento con clases existentes
+      const spacing = 350;
+      let attempts = 0;
+      while (attempts < 10) {
+        const hasOverlap = classes.some(cls => 
+          Math.abs(cls.x - newX) < spacing && Math.abs(cls.y - newY) < spacing
+        );
+        
+        if (!hasOverlap) break;
+        
+        // Mover hacia la derecha y abajo en espiral
+        newX += spacing * 0.7;
+        newY += spacing * 0.3;
+        attempts++;
+      }
+    }
+    
     const newClass = {
       id: newId,
       name: 'Nueva Clase',
-      x: 100 + classes.length * 20,
-      y: 100,
+      x: newX,
+      y: newY,
       attributes: [`id_${newId} (PK)`],
       methods: [],
     };
@@ -707,7 +742,7 @@ const EditorDiagrama = () => {
     }
 
     // Feedback visual
-    console.log(`✅ Clase "${newClass.name}" agregada exitosamente`);
+    console.log(`✅ Clase "${newClass.name}" agregada exitosamente en posición (${Math.round(newX)}, ${Math.round(newY)})`);
   };
 
   const handleClassClick = (classItem) => {
@@ -715,21 +750,40 @@ const EditorDiagrama = () => {
       if (!selectedClass) {
         // Primera clase seleccionada
         setSelectedClass(classItem);
-        console.log(`Primera clase seleccionada: ${classItem.name}`);
+        console.log(`🔗 Primera clase seleccionada: ${classItem.name}`);
+        
+        // Feedback visual mejorado
+        const classElement = document.querySelector(`[data-class-id="${classItem.id}"]`);
+        if (classElement) {
+          classElement.style.boxShadow = '0 0 0 4px rgba(16, 185, 129, 0.6)';
+          classElement.style.transform = 'scale(1.05)';
+        }
       } else if (selectedClass && selectedClass.id !== classItem.id) {
         // Segunda clase seleccionada - crear relación
         setTargetClass(classItem);
-        console.log(`Segunda clase seleccionada: ${classItem.name}, creando relación ${relationType}`);
+        console.log(`🎯 Segunda clase seleccionada: ${classItem.name}, creando relación ${relationType}`);
         
         // Crear la relación según el tipo
-        createRelationByType(selectedClass, classItem, relationType);
+        const success = createRelationByType(selectedClass, classItem, relationType);
+        
+        if (success) {
+          // Feedback visual de éxito
+          console.log(`✅ Relación ${relationType} creada exitosamente entre ${selectedClass.name} y ${classItem.name}`);
+        }
       } else if (selectedClass && selectedClass.id === classItem.id) {
         // Deseleccionar si se hace clic en la misma clase
-        console.log(`Deseleccionando clase: ${classItem.name}`);
+        console.log(`❌ Deseleccionando clase: ${classItem.name}`);
         setSelectedClass(null);
         setTargetClass(null);
+        
+        // Limpiar feedback visual
+        const classElement = document.querySelector(`[data-class-id="${classItem.id}"]`);
+        if (classElement) {
+          classElement.style.boxShadow = '';
+          classElement.style.transform = '';
+        }
       }
-      } else {
+    } else {
       // Modo normal - solo seleccionar para edición
       setSelectedClass(classItem);
     }
@@ -738,6 +792,8 @@ const EditorDiagrama = () => {
   // Función mejorada para crear relaciones según el tipo
   const createRelationByType = (sourceClass, targetClass, type) => {
     console.log(`Creando relación ${type} entre ${sourceClass.name} y ${targetClass.name}`);
+    
+    let success = true;
     
     switch (type) {
       case 'Composición':
@@ -754,20 +810,45 @@ const EditorDiagrama = () => {
         break;
       case 'Asociación':
       default:
-        createAsociacion(sourceClass, targetClass);
+        success = createAsociacion(sourceClass, targetClass);
         break;
     }
     
-    // Limpiar selecciones y salir del modo de creación
-    resetRelationCreation();
+    // Limpiar selecciones y salir del modo de creación solo si fue exitoso
+    if (success) {
+      resetRelationCreation();
+    }
+    
+    return success;
   };
 
   // Función para resetear el estado de creación de relaciones
   const resetRelationCreation = () => {
-        setSelectedClass(null);
-        setTargetClass(null);
-        setIsCreatingRelation(false);
-    console.log('Estado de creación de relaciones reseteado');
+    // Limpiar feedback visual de todas las clases
+    const classElements = document.querySelectorAll('[data-class-id]');
+    classElements.forEach(element => {
+      element.style.boxShadow = '';
+      element.style.transform = '';
+    });
+    
+    setSelectedClass(null);
+    setTargetClass(null);
+    setIsCreatingRelation(false);
+    console.log('✅ Estado de creación de relaciones reseteado - todas las clases deseleccionadas');
+  };
+
+  // Función auxiliar para limpiar la selección de clases
+  const clearClassSelection = () => {
+    // Limpiar feedback visual de todas las clases
+    const classElements = document.querySelectorAll('[data-class-id]');
+    classElements.forEach(element => {
+      element.style.boxShadow = '';
+      element.style.transform = '';
+    });
+    
+    setSelectedClass(null);
+    setTargetClass(null);
+    console.log('🧹 Selección de clases limpiada');
   };
 
   // Función para cancelar la creación de relaciones
@@ -1159,7 +1240,7 @@ const exportarXMI = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Función para manejar importación de archivos
+  // Función mejorada para manejar importación de archivos XMI
   const handleFileImport = (event) => {
     const file = event.target.files[0];
     if (!file) {
@@ -1167,63 +1248,494 @@ const exportarXMI = () => {
       return;
     }
   
-      const reader = new FileReader();
-      reader.onload = (e) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
       const xmiText = e.target.result;
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmiText, "application/xml");
   
       const importedClasses = [];
       const importedRelations = [];
+      const classIdMap = new Map(); // Mapeo de IDs XMI a IDs internos
   
-      // Extraer clases
+      console.log("🔍 Iniciando importación XMI mejorada...");
+  
+      // 1. Extraer clases regulares (uml:Class)
       const classElements = xmlDoc.getElementsByTagName("packagedElement");
       for (let i = 0; i < classElements.length; i++) {
         const classEl = classElements[i];
-        if (classEl.getAttribute("xmi:type") === "uml:Class" || classEl.getAttribute("xmi:type") === "Class") {
+        const xmiType = classEl.getAttribute("xmi:type");
+        
+        if (xmiType === "uml:Class") {
           const attributes = [];
           const attributeElements = classEl.getElementsByTagName("ownedAttribute");
+          
           for (let j = 0; j < attributeElements.length; j++) {
             const attrEl = attributeElements[j];
             const attributeName = attrEl.getAttribute("name");
-            attributes.push(attributeName || "AtributoDesconocido");
+            if (attributeName) {
+              attributes.push(attributeName);
+            }
           }
   
           const classObj = {
             id: classEl.getAttribute("xmi:id"),
-            name: classEl.getAttribute("name"),
-            x: Math.random() * 600,
-            y: Math.random() * 400,
+            name: classEl.getAttribute("name") || "ClaseSinNombre",
+            x: 200 + importedClasses.length * 350,
+            y: 200 + (importedClasses.length % 3) * 250,
             attributes,
             methods: [],
           };
+          
+          classIdMap.set(classObj.id, classObj.id);
           importedClasses.push(classObj);
+          console.log(`✅ Clase importada: ${classObj.name} (${classObj.id})`);
         }
       }
   
-      // Extraer relaciones
+      // 2. Extraer AssociationClass (clases intermedias)
+      for (let i = 0; i < classElements.length; i++) {
+        const classEl = classElements[i];
+        const xmiType = classEl.getAttribute("xmi:type");
+        
+        if (xmiType === "uml:AssociationClass") {
+          const attributes = [];
+          const attributeElements = classEl.getElementsByTagName("ownedAttribute");
+          
+          for (let j = 0; j < attributeElements.length; j++) {
+            const attrEl = attributeElements[j];
+            const attributeName = attrEl.getAttribute("name");
+            if (attributeName) {
+              attributes.push(attributeName);
+            }
+          }
+  
+          const classObj = {
+            id: classEl.getAttribute("xmi:id"),
+            name: classEl.getAttribute("name") || "ClaseIntermedia",
+            x: 400 + importedClasses.length * 350,
+            y: 300 + (importedClasses.length % 3) * 250,
+            attributes,
+            methods: [],
+          };
+          
+          classIdMap.set(classObj.id, classObj.id);
+          importedClasses.push(classObj);
+          console.log(`✅ Clase intermedia importada: ${classObj.name} (${classObj.id})`);
+        }
+      }
+  
+      // 3. Extraer relaciones de asociación - MEJORADO
+      console.log(`🔍 Procesando ${classElements.length} elementos para relaciones...`);
+      let associationCount = 0;
+      
+      for (let i = 0; i < classElements.length; i++) {
+        const classEl = classElements[i];
+        const xmiType = classEl.getAttribute("xmi:type");
+        
+        if (xmiType === "uml:Association") {
+          associationCount++;
+          console.log(`🔍 Procesando asociación ${associationCount}: ${classEl.getAttribute("xmi:id")}`);
+          const ownedEnds = classEl.getElementsByTagName("ownedEnd");
+          console.log(`   - ownedEnds encontrados: ${ownedEnds.length}`);
+          
+          if (ownedEnds.length >= 2) {
+            // Buscar los ends correctos basándose en los memberEnd
+            const memberEnds = classEl.getElementsByTagName("memberEnd");
+            let sourceEnd = null;
+            let targetEnd = null;
+            
+            if (memberEnds.length >= 2) {
+              const sourceMemberId = memberEnds[0].getAttribute("xmi:idref");
+              const targetMemberId = memberEnds[1].getAttribute("xmi:idref");
+              
+              // Encontrar los ownedEnd correspondientes
+              for (let j = 0; j < ownedEnds.length; j++) {
+                const endId = ownedEnds[j].getAttribute("xmi:id");
+                if (endId === sourceMemberId) {
+                  sourceEnd = ownedEnds[j];
+                } else if (endId === targetMemberId) {
+                  targetEnd = ownedEnds[j];
+                }
+              }
+            } else {
+              // Fallback: usar los primeros dos ownedEnd
+              sourceEnd = ownedEnds[0];
+              targetEnd = ownedEnds[1];
+            }
+            
+            if (sourceEnd && targetEnd) {
+              // Buscar el tipo de diferentes maneras
+              let sourceId = sourceEnd.getAttribute("type");
+              let targetId = targetEnd.getAttribute("type");
+              
+              // Si no encuentra type, buscar en elementos hijo
+              if (!sourceId) {
+                const sourceTypeEl = sourceEnd.querySelector("type");
+                if (sourceTypeEl) {
+                  sourceId = sourceTypeEl.getAttribute("xmi:idref");
+                }
+              }
+              
+              if (!targetId) {
+                const targetTypeEl = targetEnd.querySelector("type");
+                if (targetTypeEl) {
+                  targetId = targetTypeEl.getAttribute("xmi:idref");
+                }
+              }
+              
+              const aggregation = sourceEnd.getAttribute("aggregation") || "none";
+              
+              console.log(`🔍 Procesando relación:`);
+              console.log(`   - sourceEnd HTML:`, sourceEnd.outerHTML);
+              console.log(`   - targetEnd HTML:`, targetEnd.outerHTML);
+              console.log(`   - sourceId: ${sourceId}`);
+              console.log(`   - targetId: ${targetId}`);
+              console.log(`   - aggregation: ${aggregation}`);
+              
+              if (sourceId && targetId && classIdMap.has(sourceId) && classIdMap.has(targetId)) {
+                let relationType = "Asociación";
+                let multiplicidadOrigen = "1";
+                let multiplicidadDestino = "1";
+                
+                // Determinar tipo de relación basado en aggregation
+                if (aggregation === "composite") {
+                  relationType = "Composición";
+                  multiplicidadOrigen = "1";
+                  multiplicidadDestino = "0..*";
+                } else if (aggregation === "shared") {
+                  relationType = "Agregación";
+                  multiplicidadOrigen = "1";
+                  multiplicidadDestino = "0..*";
+                }
+                
+                const relationObj = {
+                  id: classEl.getAttribute("xmi:id"),
+                  source: sourceId,
+                  target: targetId,
+                  type: relationType,
+                  multiplicidadOrigen,
+                  multiplicidadDestino,
+                };
+                
+                importedRelations.push(relationObj);
+                console.log(`✅ Relación importada: ${relationType} (${sourceId} → ${targetId})`);
+              } else {
+                console.log(`⚠️ Relación omitida: clases no encontradas (${sourceId}, ${targetId})`);
+              }
+            }
+          } else {
+            console.log(`⚠️ Asociación ${associationCount} omitida: solo ${ownedEnds.length} ownedEnds (necesita 2)`);
+            console.log(`   - Buscando ownedEnds en clases relacionadas...`);
+            
+            // Buscar ownedEnds en las clases que referencian esta asociación
+            const associationId = classEl.getAttribute("xmi:id");
+            const relatedOwnedEnds = [];
+            
+            // Buscar en todas las clases por ownedEnds que referencien esta asociación
+            const seenOwnedEndIds = new Set();
+            for (let j = 0; j < classElements.length; j++) {
+              const classElement = classElements[j];
+              
+              // Buscar en ownedEnds directos
+              const classOwnedEnds = classElement.getElementsByTagName("ownedEnd");
+              for (let k = 0; k < classOwnedEnds.length; k++) {
+                const ownedEnd = classOwnedEnds[k];
+                const ownedEndId = ownedEnd.getAttribute("xmi:id");
+                
+                if (ownedEnd.getAttribute("association") === associationId && !seenOwnedEndIds.has(ownedEndId)) {
+                  seenOwnedEndIds.add(ownedEndId);
+                  relatedOwnedEnds.push(ownedEnd);
+                  console.log(`   - Encontrado ownedEnd en clase ${classElement.getAttribute("name")}: ${ownedEndId}`);
+                  console.log(`   - ownedEnd HTML:`, ownedEnd.outerHTML);
+                }
+              }
+              
+              // Buscar en atributos de clase que pueden ser ownedEnds
+              const classAttributes = classElement.getElementsByTagName("ownedAttribute");
+              for (let k = 0; k < classAttributes.length; k++) {
+                const attribute = classAttributes[k];
+                const attributeId = attribute.getAttribute("xmi:id");
+                
+                if (attribute.getAttribute("association") === associationId && !seenOwnedEndIds.has(attributeId)) {
+                  seenOwnedEndIds.add(attributeId);
+                  relatedOwnedEnds.push(attribute);
+                  console.log(`   - Encontrado ownedAttribute en clase ${classElement.getAttribute("name")}: ${attributeId}`);
+                  console.log(`   - ownedAttribute HTML:`, attribute.outerHTML);
+                }
+              }
+            }
+            
+            console.log(`   - Total ownedEnds encontrados: ${relatedOwnedEnds.length}`);
+            
+            if (relatedOwnedEnds.length >= 2) {
+              console.log(`   - Procesando con ${relatedOwnedEnds.length} ownedEnds encontrados en clases`);
+              const sourceEnd = relatedOwnedEnds[0];
+              const targetEnd = relatedOwnedEnds[1];
+              
+              // Buscar el tipo de diferentes maneras
+              let sourceId = sourceEnd.getAttribute("type");
+              let targetId = targetEnd.getAttribute("type");
+              
+              // Si no encuentra type, buscar en elementos hijo
+              if (!sourceId) {
+                const sourceTypeEl = sourceEnd.querySelector("type");
+                if (sourceTypeEl) {
+                  sourceId = sourceTypeEl.getAttribute("xmi:idref");
+                }
+              }
+              
+              if (!targetId) {
+                const targetTypeEl = targetEnd.querySelector("type");
+                if (targetTypeEl) {
+                  targetId = targetTypeEl.getAttribute("xmi:idref");
+                }
+              }
+              
+              const aggregation = sourceEnd.getAttribute("aggregation") || "none";
+              
+              console.log(`   - sourceId: ${sourceId}`);
+              console.log(`   - targetId: ${targetId}`);
+              console.log(`   - aggregation: ${aggregation}`);
+              
+              // Debug específico para la composición auto-empleados
+              if ((sourceId === "EAID_1018C124_0A6B_4c2f_9D5D_162B9D4613D3" && targetId === "EAID_2D645AEB_B784_4d5b_BFB9_DF6A841238F7") ||
+                  (sourceId === "EAID_2D645AEB_B784_4d5b_BFB9_DF6A841238F7" && targetId === "EAID_1018C124_0A6B_4c2f_9D5D_162B9D4613D3")) {
+                console.log(`   - 🎯 ESTA ES LA COMPOSICIÓN AUTO-EMPLEADOS!`);
+                console.log(`   - sourceEnd aggregation: ${sourceEnd.getAttribute("aggregation")}`);
+                console.log(`   - targetEnd aggregation: ${targetEnd.getAttribute("aggregation")}`);
+              }
+              
+              if (sourceId && targetId && classIdMap.has(sourceId) && classIdMap.has(targetId)) {
+                let relationType = "Asociación";
+                let multiplicidadOrigen = "1";
+                let multiplicidadDestino = "1";
+                
+                // Determinar tipo de relación basado en aggregation
+                const sourceAggregation = sourceEnd.getAttribute("aggregation");
+                const targetAggregation = targetEnd.getAttribute("aggregation");
+                
+                console.log(`   - sourceAggregation: ${sourceAggregation}`);
+                console.log(`   - targetAggregation: ${targetAggregation}`);
+                
+                // Determinar tipo y dirección de la relación
+                let finalSourceId = sourceId;
+                let finalTargetId = targetId;
+                
+                if (sourceAggregation === "composite" || targetAggregation === "composite") {
+                  relationType = "Composición";
+                  // En composición, el que tiene composite es el contenedor (target)
+                  if (sourceAggregation === "composite") {
+                    finalSourceId = targetId;
+                    finalTargetId = sourceId;
+                  }
+                } else if (sourceAggregation === "shared" || targetAggregation === "shared") {
+                  relationType = "Agregación";
+                  // En agregación, el que tiene shared es el contenedor (target)
+                  if (sourceAggregation === "shared") {
+                    finalSourceId = targetId;
+                    finalTargetId = sourceId;
+                  }
+                }
+                
+                console.log(`   - Dirección final: ${finalSourceId} → ${finalTargetId}`);
+                
+                const relationObj = {
+                  id: associationId,
+                  source: finalSourceId,
+                  target: finalTargetId,
+                  type: relationType,
+                  multiplicidadOrigen,
+                  multiplicidadDestino,
+                };
+                
+                importedRelations.push(relationObj);
+                console.log(`✅ Relación importada desde clases: ${relationType} (${finalSourceId} → ${finalTargetId})`);
+              } else {
+                console.log(`⚠️ Relación desde clases omitida: clases no encontradas (${sourceId}, ${targetId})`);
+              }
+            } else {
+              console.log(`   - Solo ${relatedOwnedEnds.length} ownedEnds encontrados en clases (necesita 2)`);
+              console.log(`   - IDs de ownedEnds encontrados:`, relatedOwnedEnds.map(end => end.getAttribute("xmi:id")));
+            }
+          }
+        }
+      }
+      
+      console.log(`🔍 Total de asociaciones procesadas: ${associationCount}`);
+  
+      // 4. Extraer relaciones de generalización
       const generalizationElements = xmlDoc.getElementsByTagName("generalization");
+      console.log(`🔍 Encontradas ${generalizationElements.length} generalizaciones`);
+      
       for (let i = 0; i < generalizationElements.length; i++) {
         const relationEl = generalizationElements[i];
         const sourceId = relationEl.getAttribute("specific");
         const targetId = relationEl.getAttribute("general");
+        
+        console.log(`🔍 Procesando generalización ${i + 1}: ${sourceId} → ${targetId}`);
+        console.log(`   - Elemento HTML:`, relationEl.outerHTML);
+        console.log(`   - sourceId en mapa: ${classIdMap.has(sourceId)}`);
+        console.log(`   - targetId en mapa: ${classIdMap.has(targetId)}`);
   
-        if (sourceId && targetId) {
+        if (sourceId && targetId && classIdMap.has(sourceId) && classIdMap.has(targetId)) {
           const relationObj = {
             id: relationEl.getAttribute("xmi:id"),
             source: sourceId,
             target: targetId,
             type: "Generalización",
+            multiplicidadOrigen: "",
+            multiplicidadDestino: "",
           };
           importedRelations.push(relationObj);
+          console.log(`✅ Generalización importada: ${sourceId} → ${targetId}`);
+        } else {
+          console.log(`⚠️ Generalización omitida: clases no encontradas (${sourceId}, ${targetId})`);
+          
+          // Si falta sourceId, buscar en el elemento padre (clase)
+          if (!sourceId && targetId) {
+            const parentClass = relationEl.parentElement;
+            if (parentClass && parentClass.getAttribute("xmi:type") === "uml:Class") {
+              const parentId = parentClass.getAttribute("xmi:id");
+              console.log(`   - Buscando sourceId en clase padre: ${parentId}`);
+              
+              if (classIdMap.has(parentId)) {
+                console.log(`   - Usando clase padre como sourceId: ${parentId}`);
+                
+                const relationObj = {
+                  id: relationEl.getAttribute("xmi:id"),
+                  source: parentId,
+                  target: targetId,
+                  type: "Generalización",
+                  multiplicidadOrigen: "",
+                  multiplicidadDestino: "",
+                };
+                
+                importedRelations.push(relationObj);
+                console.log(`✅ Generalización importada desde clase padre: ${parentId} → ${targetId}`);
+              } else {
+                console.log(`   - Clase padre no encontrada en mapa: ${parentId}`);
+              }
+            }
+          }
         }
       }
   
+      // 5. Procesar relaciones de AssociationClass - MEJORADO
+      for (let i = 0; i < classElements.length; i++) {
+        const classEl = classElements[i];
+        const xmiType = classEl.getAttribute("xmi:type");
+        
+        if (xmiType === "uml:AssociationClass") {
+          const ownedEnds = classEl.getElementsByTagName("ownedEnd");
+          const memberEnds = classEl.getElementsByTagName("memberEnd");
+          
+          console.log(`🔍 Procesando AssociationClass: ${classEl.getAttribute("name")} (${classEl.getAttribute("xmi:id")})`);
+          console.log(`   - ownedEnds: ${ownedEnds.length}`);
+          console.log(`   - memberEnds: ${memberEnds.length}`);
+          
+          if (ownedEnds.length >= 2) {
+            let sourceEnd = null;
+            let targetEnd = null;
+            
+            // Usar memberEnd para encontrar los ends correctos
+            if (memberEnds.length >= 2) {
+              const sourceMemberId = memberEnds[0].getAttribute("xmi:idref");
+              const targetMemberId = memberEnds[1].getAttribute("xmi:idref");
+              
+              for (let j = 0; j < ownedEnds.length; j++) {
+                const endId = ownedEnds[j].getAttribute("xmi:id");
+                if (endId === sourceMemberId) {
+                  sourceEnd = ownedEnds[j];
+                } else if (endId === targetMemberId) {
+                  targetEnd = ownedEnds[j];
+                }
+              }
+            } else {
+              sourceEnd = ownedEnds[0];
+              targetEnd = ownedEnds[1];
+            }
+            
+            if (sourceEnd && targetEnd) {
+              // Buscar el tipo de diferentes maneras
+              let sourceId = sourceEnd.getAttribute("type");
+              let targetId = targetEnd.getAttribute("type");
+              
+              // Si no encuentra type, buscar en elementos hijo
+              if (!sourceId) {
+                const sourceTypeEl = sourceEnd.querySelector("type");
+                if (sourceTypeEl) {
+                  sourceId = sourceTypeEl.getAttribute("xmi:idref");
+                }
+              }
+              
+              if (!targetId) {
+                const targetTypeEl = targetEnd.querySelector("type");
+                if (targetTypeEl) {
+                  targetId = targetTypeEl.getAttribute("xmi:idref");
+                }
+              }
+              
+              console.log(`   - sourceEnd HTML:`, sourceEnd.outerHTML);
+              console.log(`   - targetEnd HTML:`, targetEnd.outerHTML);
+              console.log(`   - sourceId: ${sourceId}`);
+              console.log(`   - targetId: ${targetId}`);
+              console.log(`   - sourceId en mapa: ${classIdMap.has(sourceId)}`);
+              console.log(`   - targetId en mapa: ${classIdMap.has(targetId)}`);
+              
+              if (sourceId && targetId && classIdMap.has(sourceId) && classIdMap.has(targetId)) {
+                // Crear dos relaciones: una desde cada clase hacia la clase intermedia
+                const relation1 = {
+                  id: `${classEl.getAttribute("xmi:id")}_1`,
+                  source: sourceId,
+                  target: classEl.getAttribute("xmi:id"),
+                  type: "Uno a Muchos",
+                  multiplicidadOrigen: "1",
+                  multiplicidadDestino: "*",
+                };
+                
+                const relation2 = {
+                  id: `${classEl.getAttribute("xmi:id")}_2`,
+                  source: targetId,
+                  target: classEl.getAttribute("xmi:id"),
+                  type: "Uno a Muchos",
+                  multiplicidadOrigen: "1",
+                  multiplicidadDestino: "*",
+                };
+                
+                importedRelations.push(relation1, relation2);
+                console.log(`✅ Relaciones de clase intermedia creadas: ${sourceId} → ${classEl.getAttribute("xmi:id")} ← ${targetId}`);
+              } else {
+                console.log(`⚠️ AssociationClass omitida: clases no encontradas (${sourceId}, ${targetId})`);
+              }
+            }
+          }
+        }
+      }
+  
+      console.log(`📊 Resumen de importación:`);
+      console.log(`   - Clases: ${importedClasses.length}`);
+      console.log(`   - Relaciones: ${importedRelations.length}`);
       console.log("Clases importadas:", importedClasses);
       console.log("Relaciones importadas:", importedRelations);
+      
+      // Debug adicional
+      console.log("🔍 Mapa de IDs de clases:", Array.from(classIdMap.keys()));
+      console.log("🔍 Todas las clases encontradas en XMI:");
+      for (let i = 0; i < classElements.length; i++) {
+        const classEl = classElements[i];
+        const xmiType = classEl.getAttribute("xmi:type");
+        if (xmiType === "uml:Class" || xmiType === "uml:AssociationClass") {
+          console.log(`   - ${classEl.getAttribute("name")} (${classEl.getAttribute("xmi:id")}) - ${xmiType}`);
+        }
+      }
   
+      // Aplicar las clases y relaciones importadas
       setClasses(sanitizeClassesPositions(importedClasses));
       setRelations(importedRelations);
+      
+      // Feedback visual
+      alert(`✅ Importación exitosa!\n\nClases: ${importedClasses.length}\nRelaciones: ${importedRelations.length}`);
     };
   
     reader.readAsText(file);
@@ -1497,29 +2009,52 @@ const exportarXMI = () => {
 
       <ToolbarContainer>
         <ToolbarGroup>
-            <Button $variant="primary" onClick={agregarClase}>
+            <Button $variant="primary" onClick={() => {
+              clearClassSelection();
+              agregarClase();
+            }}>
             <Plus size={16} />
               Agregar Clase
           </Button>
           {!isCreatingRelation && (
             <>
-              <Button $variant="secondary" onClick={() => { setRelationType('Asociación'); setIsCreatingRelation(true); }}>
+              <Button $variant="secondary" onClick={() => { 
+                clearClassSelection();
+                setRelationType('Asociación'); 
+                setIsCreatingRelation(true); 
+              }}>
                 <Link size={16} />
                 Crear Asociación
           </Button>
-              <Button $variant="secondary" onClick={() => { setRelationType('Composición'); setIsCreatingRelation(true); }}>
+              <Button $variant="secondary" onClick={() => { 
+                clearClassSelection();
+                setRelationType('Composición'); 
+                setIsCreatingRelation(true); 
+              }}>
                 <CircleDot size={16} />
                 Crear Composición
             </Button>
-            <Button $variant="secondary" onClick={() => { setRelationType('Agregacion'); setIsCreatingRelation(true); }}>
+            <Button $variant="secondary" onClick={() => { 
+                clearClassSelection();
+                setRelationType('Agregacion'); 
+                setIsCreatingRelation(true); 
+              }}>
                 <Circle size={16} />
                 Crear Agregación
             </Button>
-            <Button $variant="secondary" onClick={() => { setRelationType('Generalización'); setIsCreatingRelation(true); }}>
+            <Button $variant="secondary" onClick={() => { 
+                clearClassSelection();
+                setRelationType('Generalización'); 
+                setIsCreatingRelation(true); 
+              }}>
                 <ArrowUp size={16} />
                 Crear Generalización
             </Button>
-            <Button $variant="secondary" onClick={() => { setRelationType('Muchos a Muchos'); setIsCreatingRelation(true); }}>
+            <Button $variant="secondary" onClick={() => { 
+                clearClassSelection();
+                setRelationType('Muchos a Muchos'); 
+                setIsCreatingRelation(true); 
+              }}>
                 <ArrowRightLeft size={16} />
                 Crear Muchos a Muchos
             </Button>
@@ -1545,18 +2080,25 @@ const exportarXMI = () => {
               </Button>
               <div style={{ 
                 padding: '12px 20px', 
-                background: 'linear-gradient(135deg,rgb(0, 0, 0) 0%,rgb(14, 14, 15) 100%)', 
+                background: selectedClass 
+                  ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' 
+                  : 'linear-gradient(135deg,rgb(0, 0, 0) 0%,rgb(14, 14, 15) 100%)', 
                 borderRadius: '12px', 
                 fontSize: '15px',
-                border: '2px solid rgba(255, 255, 255, 0.2)',
+                border: selectedClass 
+                  ? '2px solid rgba(16, 185, 129, 0.3)' 
+                  : '2px solid rgba(255, 255, 255, 0.2)',
                 color: 'white',
                 fontWeight: '600',
-                boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
+                boxShadow: selectedClass 
+                  ? '0 6px 20px rgba(16, 185, 129, 0.4)' 
+                  : '0 6px 20px rgba(102, 126, 234, 0.4)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
                 position: 'relative',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                transition: 'all 0.3s ease'
               }}>
                 <div style={{
                   position: 'absolute',
@@ -1571,9 +2113,11 @@ const exportarXMI = () => {
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  background: '#22c55e',
+                  background: selectedClass ? '#22c55e' : '#667eea',
                   animation: 'pulse 1.5s infinite',
-                  boxShadow: '0 0 10px rgba(34, 197, 94, 0.6)',
+                  boxShadow: selectedClass 
+                    ? '0 0 10px rgba(34, 197, 94, 0.6)' 
+                    : '0 0 10px rgba(102, 126, 234, 0.6)',
                   position: 'relative',
                   zIndex: 1
                 }} />

@@ -476,11 +476,12 @@ const ClassComponent = ({
       y={y}
       $isSelected={$isSelected}
       $isDragging={isDragging}
+      data-class-id={id}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={handleMouseDown}
       onTouchStart={(e) => {
         if (e.touches.length === 1 && !isEditingAnyField) {
-          e.preventDefault();
+          // No prevenir el comportamiento por defecto para evitar conflictos
           const touch = e.touches[0];
           const mouseEvent = new MouseEvent('mousedown', {
             clientX: touch.clientX,
