@@ -336,21 +336,6 @@ const DiagramInfo = styled.div`
   font-weight: 500;
 `;
 
-const DiagramLink = styled.span`
-  cursor: pointer;
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  flex: 1;
-
-  &:hover {
-    color: #a8a8ff;
-    transform: translateX(5px);
-  }
-`;
-
 const InvitationInput = styled.input`
   padding: 18px 24px;
   background: rgba(255, 255, 255, 0.06);
@@ -580,14 +565,14 @@ const Dashboard = () => {
       }
       
       // Primero validar el código según documentación del backend
-      console.log('🔍 Validando código de invitación:', codigoLimpio);
+      console.log('Validando código de invitación:', codigoLimpio);
       const validationResponse = await axios.get(
         API_CONFIG.getUrl(`/api/invitations/code/${codigoLimpio}`),
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
       const validationData = validationResponse.data;
-      console.log('📋 Datos de validación:', validationData);
+      console.log('Datos de validación:', validationData);
       
       if (!validationData.valido) {
         setMensajeAceptacion({ 
@@ -614,7 +599,7 @@ const Dashboard = () => {
       }
       
       // Si la validación es exitosa, proceder a aceptar la invitación
-      console.log('✅ Código válido, aceptando invitación...');
+      console.log('Código válido, aceptando invitación...');
       const response = await axios.post(
         API_CONFIG.getUrl('/api/invitations/accept'),
         { codigoInvitacion: codigoLimpio },

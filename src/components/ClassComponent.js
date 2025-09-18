@@ -4,13 +4,13 @@ import { Plus, X, Edit3, GripVertical, Settings } from 'lucide-react';
 
 const ClassContainer = styled.div`
   position: absolute;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: #2d3748;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   width: 300px;
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  border: 2px solid #e2e8f0;
+  border: 2px solid #ffffff;
   transition: ${props => props.$isDragging ? 'none' : 'all 0.2s ease'};
   left: ${props => props.x}px;
   top: ${props => props.y}px;
@@ -19,7 +19,7 @@ const ClassContainer = styled.div`
   will-change: ${props => props.$isDragging ? 'transform' : 'auto'};
 
   &:hover {
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
     border-color: #667eea;
   }
 
@@ -37,7 +37,7 @@ const ClassContainer = styled.div`
 `;
 
 const ClassHeader = styled.div`
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4a5568;
   color: white;
   padding: 16px;
   text-align: center;
@@ -45,13 +45,14 @@ const ClassHeader = styled.div`
   cursor: move;
   user-select: none;
   -webkit-user-select: none;
-  border-radius: 10px 10px 0 0;
+  border-radius: 6px 6px 0 0;
 
   h4 {
     margin: 0;
     font-size: 1.2rem;
     font-weight: 700;
     letter-spacing: 0.5px;
+    color: white;
   }
 
   input {
@@ -105,7 +106,8 @@ const DeleteButton = styled.button`
 
 const Section = styled.div`
   padding: 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #4a5568;
+  background: #2d3748;
 
   &:last-child {
     border-bottom: none;
@@ -114,7 +116,7 @@ const Section = styled.div`
 
 const SectionTitle = styled.h5`
   margin: 0 0 12px 0;
-  color: #64748b;
+  color: white;
   font-size: 0.9rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -144,16 +146,17 @@ const ListItem = styled.li`
   transition: background-color 0.2s ease;
 
   &:hover {
-    background: rgba(102, 126, 234, 0.05);
+    background: rgba(102, 126, 234, 0.1);
   }
 
   input {
     flex: 1;
     padding: 8px 12px;
-    border: 2px solid #e2e8f0;
+    border: 2px solid #4a5568;
     border-radius: 8px;
     font-size: 0.9rem;
-    background: white;
+    background: #1a202c;
+    color: white;
     transition: all 0.3s ease;
 
     &:focus {
@@ -243,18 +246,18 @@ const DragHandle = styled.div`
   left: 8px;
   width: 20px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
-  opacity: 0.7;
+  opacity: 0.8;
   transition: all 0.3s ease;
 
   &:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.5);
   }
 
   i {
@@ -284,7 +287,6 @@ const ClassComponent = ({
   const [localMethods, setLocalMethods] = useState(methods);
   const containerRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isEditingAnyField, setIsEditingAnyField] = useState(false);
 
   useEffect(() => {
@@ -318,7 +320,6 @@ const ClassComponent = ({
       });
       
       setIsDragging(true);
-      setDragOffset({ x: offsetX, y: offsetY });
       
       onSelect && onSelect();
       

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { use } from 'react';
 import styled, { css } from 'styled-components';
 import API_CONFIG from '../services/apiConfig';
 // VS Code style panel + draggable + resizable
@@ -188,7 +187,7 @@ function applyPatchToDiagram(patch) {
     
     // Verificar que patch sea válido
     if (!patch) {
-      console.error('❌ Patch es null o undefined');
+      console.error('Patch es null o undefined');
       return;
     }
     
@@ -197,9 +196,9 @@ function applyPatchToDiagram(patch) {
     if (typeof patch === 'string') {
       try {
         parsedPatch = JSON.parse(patch);
-        console.log('✅ Patch parseado desde string:', parsedPatch);
+        console.log('Patch parseado desde string:', parsedPatch);
       } catch (parseError) {
-        console.error('❌ Error parseando patch JSON:', parseError);
+        console.error('Error parseando patch JSON:', parseError);
         console.log('Patch original:', patch);
         return;
       }
@@ -207,7 +206,7 @@ function applyPatchToDiagram(patch) {
     
     // Verificar que sea un array
     if (!Array.isArray(parsedPatch)) {
-      console.error('❌ Patch no es un array válido:', parsedPatch);
+      console.error('Patch no es un array válido:', parsedPatch);
       return;
     }
     
@@ -217,9 +216,9 @@ function applyPatchToDiagram(patch) {
     });
     window.dispatchEvent(patchEvent);
     
-    console.log('✅ Patch aplicado exitosamente');
+    console.log('Patch aplicado exitosamente');
   } catch (error) {
-    console.error('❌ Error aplicando patch:', error);
+    console.error('Error aplicando patch:', error);
     console.log('Patch que causó el error:', patch);
   }
 }
@@ -247,14 +246,14 @@ async function* streamAIResponse(prompt, diagramId, currentDiagram) {
     const result = await response.json();
     
     // Debug: Mostrar la respuesta completa del backend
-    console.log('🔍 Respuesta completa del backend:', result);
+    console.log('Respuesta completa del backend:', result);
     
     // Si hay cambios en el diagrama, aplicar los cambios directamente
     if (result.proposal && result.proposal.patch) {
       console.log('📦 Patch encontrado:', result.proposal.patch);
       // Aplicar los cambios del patch al diagrama
       applyPatchToDiagram(result.proposal.patch);
-      yield "✅ Diagrama actualizado automáticamente\n\n";
+      yield "Diagrama actualizado automáticamente\n\n";
     } else {
       console.log('⚠️ No se encontró patch en la respuesta');
     }
@@ -329,9 +328,7 @@ const AIAssistant = ({
 	// Sync when controlled prop changes
 	useEffect(() => { if (controlled) setOpen(isOpen); }, [isOpen, controlled]);
 	const [panelWidth, setPanelWidth] = useState(width);
-	const [dragging, setDragging] = useState(false);
 	const [resizing, setResizing] = useState(false);
-	const dragStart = useRef({ x: 0, w: width });
 	const panelRef = useRef(null);
 
 	const [messages, setMessages] = useState([
@@ -373,7 +370,6 @@ const AIAssistant = ({
 	useEffect(() => {
 		function up() {
 			setResizing(false);
-			setDragging(false);
 		}
 		window.addEventListener('mousemove', handleMouseMove);
 		window.addEventListener('mouseup', up);
@@ -402,15 +398,15 @@ const AIAssistant = ({
 		setSending(true);
 
 		const aiId = Date.now() + '-a';
-		let accumulated = '';
 
 		setMessages(m => [...m, { 
 			id: aiId, 
 			role: 'assistant', 
 			content: 'Procesando...' }]);
+		
 		try {
+			let accumulated = '';
 			for await (const chunk of streamAIResponse(userMsg.content, diagramId, currentDiagram)) {
-
 				accumulated += chunk;
 				setMessages(m => m.map(msg => 
 					msg.id === aiId ? { ...msg, content: accumulated } : msg));
@@ -436,7 +432,7 @@ const AIAssistant = ({
 			setMessages(prev => [...prev, {
 			id: Date.now() + '-agent-update',
 			role: 'assistant',
-			content: `✅ ${data.message || 'Diagrama actualizado automáticamente'}`
+			content: `${data.message || 'Diagrama actualizado automáticamente'}`
 			}]);
 		}
 		};

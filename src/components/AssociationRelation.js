@@ -34,14 +34,18 @@ const RelationPath = styled.path`
 `;
 
 const RelationText = styled.text`
-  font-size: 14px;
-  font-weight: 700;
-  fill: #1a202c;
+  font-size: 16px;
+  font-weight: 800;
+  fill: white;
   text-anchor: middle;
   pointer-events: none;
   user-select: none;
   dominant-baseline: middle;
-  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.8));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+  stroke: rgba(0, 0, 0, 0.8);
+  stroke-width: 0.5px;
+  paint-order: stroke fill;
+  font-family: 'Inter', sans-serif;
 `;
 
 const RelationControls = styled.div`
@@ -97,16 +101,19 @@ const ControlButton = styled.button.attrs(props => ({
 `;
 
 const RelationLabel = styled.text`
-  font-size: 12px;
-  fill: #4a5568;
+  font-size: 14px;
+  fill: white;
   font-family: 'Inter', sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.3s ease;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  transition: all 0.2s ease;
 
   &:hover {
-    fill: #1a202c;
-    font-weight: 700;
+    fill: #667eea;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
   }
 `;
 
@@ -135,8 +142,8 @@ const DeleteButton = styled.button`
   background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
   color: white;
   border: none;
-  border-radius: 10px;
-  padding: 8px 12px;
+  border-radius: 50%;
+  padding: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -144,20 +151,25 @@ const DeleteButton = styled.button`
   font-size: 12px;
   font-weight: 600;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
 
   &:hover {
     background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
-    transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+    transform: translateY(-2px) scale(1.1);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5);
   }
 
   &:active {
     transform: translateY(0) scale(1);
   }
 
-  i {
-    font-size: 14px;
+  svg {
+    width: 18px;
+    height: 18px;
   }
 `;
 
@@ -286,55 +298,111 @@ const AssociationRelation = ({
       y: targetClass.y + CLASS_HEIGHT / 2
     };
 
-    // Calcular ángulo entre las clases
+    // Calcular dirección del vector desde origen hacia destino
     const deltaX = targetCenter.x - sourceCenter.x;
     const deltaY = targetCenter.y - sourceCenter.y;
-    const angle = Math.atan2(deltaY, deltaX);
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    let startX, startY, endX, endY;
-
-    // Calcular puntos de conexión en los bordes de las clases
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-
-    // Para la clase origen
-    if (Math.abs(cos) > Math.abs(sin)) {
-      // Conectar por los lados izquierdo/derecho
-      startX = sourceCenter.x + (cos > 0 ? CLASS_WIDTH / 2 : -CLASS_WIDTH / 2);
-      startY = sourceCenter.y + sin * (CLASS_WIDTH / 2) / Math.abs(cos);
-    } else {
-      // Conectar por los lados superior/inferior
-      startY = sourceCenter.y + (sin > 0 ? CLASS_HEIGHT / 2 : -CLASS_HEIGHT / 2);
-      startX = sourceCenter.x + cos * (CLASS_HEIGHT / 2) / Math.abs(sin);
+    if (distance === 0) {
+      return { startX: sourceCenter.x, startY: sourceCenter.y, endX: targetCenter.x, endY: targetCenter.y };
     }
 
-    // Para la clase destino
-    if (Math.abs(cos) > Math.abs(sin)) {
-      // Conectar por los lados izquierdo/derecho
-      endX = targetCenter.x + (cos < 0 ? CLASS_WIDTH / 2 : -CLASS_WIDTH / 2);
-      endY = targetCenter.y + sin * (CLASS_WIDTH / 2) / Math.abs(cos);
-    } else {
-      // Conectar por los lados superior/inferior
-      endY = targetCenter.y + (sin < 0 ? CLASS_HEIGHT / 2 : -CLASS_HEIGHT / 2);
-      endX = targetCenter.x + cos * (CLASS_HEIGHT / 2) / Math.abs(sin);
-    }
+    // Normalizar el vector
+    const nx = deltaX / distance;
+    const ny = deltaY / distance;
 
-    // Verificar que las coordenadas sean válidas y finitas
-    if (!Number.isFinite(startX) || !Number.isFinite(startY) || 
-        !Number.isFinite(endX) || !Number.isFinite(endY)) {
-      console.warn('Coordenadas calculadas no son finitas, usando fallback');
-      return {
-        startX: sourceCenter.x,
-        startY: sourceCenter.y,
-        endX: targetCenter.x,
-        endY: targetCenter.y
-      };
-    }
+    // Función para encontrar el punto de intersección con el borde de un rectángulo
+    const findIntersectionPoint = (centerX, centerY, dirX, dirY, width, height) => {
+      // Calcular intersecciones con cada borde
+      const intersections = [];
+      
+      // Borde izquierdo (x = centerX - width/2)
+      const tLeft = (centerX - width/2 - centerX) / dirX;
+      if (tLeft > 0) {
+        const y = centerY + dirY * tLeft;
+        if (y >= centerY - height/2 && y <= centerY + height/2) {
+          intersections.push({ x: centerX - width/2, y, t: tLeft });
+        }
+      }
+      
+      // Borde derecho (x = centerX + width/2)
+      const tRight = (centerX + width/2 - centerX) / dirX;
+      if (tRight > 0) {
+        const y = centerY + dirY * tRight;
+        if (y >= centerY - height/2 && y <= centerY + height/2) {
+          intersections.push({ x: centerX + width/2, y, t: tRight });
+        }
+      }
+      
+      // Borde superior (y = centerY - height/2)
+      const tTop = (centerY - height/2 - centerY) / dirY;
+      if (tTop > 0) {
+        const x = centerX + dirX * tTop;
+        if (x >= centerX - width/2 && x <= centerX + width/2) {
+          intersections.push({ x, y: centerY - height/2, t: tTop });
+        }
+      }
+      
+      // Borde inferior (y = centerY + height/2)
+      const tBottom = (centerY + height/2 - centerY) / dirY;
+      if (tBottom > 0) {
+        const x = centerX + dirX * tBottom;
+        if (x >= centerX - width/2 && x <= centerX + width/2) {
+          intersections.push({ x, y: centerY + height/2, t: tBottom });
+        }
+      }
+      
+      // Retornar la intersección más cercana (menor t)
+      if (intersections.length > 0) {
+        const closest = intersections.reduce((min, current) => current.t < min.t ? current : min);
+        return { x: closest.x, y: closest.y };
+      }
+      
+      // Fallback
+      return { x: centerX, y: centerY };
+    };
 
-    return { startX, startY, endX, endY };
+    // Encontrar punto de salida en la clase origen
+    const startPoint = findIntersectionPoint(sourceCenter.x, sourceCenter.y, nx, ny, CLASS_WIDTH, CLASS_HEIGHT);
+    
+    // Encontrar punto de entrada en la clase destino
+    const endPoint = findIntersectionPoint(targetCenter.x, targetCenter.y, -nx, -ny, CLASS_WIDTH, CLASS_HEIGHT);
+
+    return { 
+      startX: startPoint.x, 
+      startY: startPoint.y, 
+      endX: endPoint.x, 
+      endY: endPoint.y 
+    };
   };
 
   const { startX, startY, endX, endY } = calculateLineCoordinates();
+
+  // Función para generar línea rectangular
+  const generateRectangularPath = (startX, startY, endX, endY) => {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    
+    // Calcular el punto medio
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    
+    // Calcular el ancho del rectángulo (20% de la distancia)
+    const rectWidth = Math.max(Math.abs(dx) * 0.2, 20);
+    const rectHeight = Math.max(Math.abs(dy) * 0.2, 20);
+    
+    // Crear un rectángulo en el medio de la línea
+    const rectX = midX - rectWidth / 2;
+    const rectY = midY - rectHeight / 2;
+    
+    // Crear path rectangular que conecte los puntos
+    return `M ${startX} ${startY} 
+            L ${rectX} ${startY} 
+            L ${rectX} ${rectY} 
+            L ${rectX + rectWidth} ${rectY} 
+            L ${rectX + rectWidth} ${endY} 
+            L ${endX} ${endY}`;
+  };
 
   return (
     <svg
@@ -431,7 +499,7 @@ const AssociationRelation = ({
         $isSelected={isSelected}
       >
         <RelationPath
-          d={`M ${startX} ${startY} L ${endX} ${endY}`}
+          d={generateRectangularPath(startX, startY, endX, endY)}
           fill="none"
           {...getRelationStyle(relation.type)}
           filter="url(#shadowFilter)"
@@ -440,17 +508,6 @@ const AssociationRelation = ({
         
         {/* Nombre de la relación */}
         <g transform={`translate(${(startX + endX) / 2}, ${(startY + endY) / 2})`}>
-          <rect
-            x="-60"
-            y="-16"
-            width="120"
-            height="32"
-            fill="white"
-            rx="8"
-            opacity="0.95"
-            stroke="#e2e8f0"
-            strokeWidth="1"
-          />
           <RelationText>
             {relation.type}
           </RelationText>
@@ -483,17 +540,6 @@ const AssociationRelation = ({
 
         {/* Etiquetas de cardinalidad - posicionamiento mejorado */}
         <g transform={`translate(${startX - 25}, ${startY - 10})`}>
-          <rect
-            x="-5"
-            y="-8"
-            width="60"
-            height="20"
-            fill="white"
-            rx="4"
-            opacity="0.9"
-            stroke="#e2e8f0"
-            strokeWidth="1"
-          />
           {editModeOrigen ? (
             <RelationInput width="50" height="24">
               <input
@@ -512,17 +558,6 @@ const AssociationRelation = ({
         </g>
 
         <g transform={`translate(${endX - 25}, ${endY - 10})`}>
-          <rect
-            x="-5"
-            y="-8"
-            width="60"
-            height="20"
-            fill="white"
-            rx="4"
-            opacity="0.9"
-            stroke="#e2e8f0"
-            strokeWidth="1"
-          />
           {editModeDestino ? (
             <RelationInput width="50" height="24">
               <input
@@ -542,13 +577,13 @@ const AssociationRelation = ({
 
         {/* Botón de eliminar */}
         <foreignObject
-          x={(startX + endX) / 2 - 12}
-          y={(startY + endY) / 2 - 12}
-          width="24"
-          height="24"
+          x={(startX + endX) / 2 - 16}
+          y={(startY + endY) / 2 - 40}
+          width="32"
+          height="32"
         >
           <DeleteButton onClick={handleDelete}>
-            <X size={16} />
+            <X size={18} />
           </DeleteButton>
         </foreignObject>
       </RelationGroup>

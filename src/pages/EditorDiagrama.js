@@ -81,10 +81,7 @@ if (typeof document !== 'undefined') {
 const EditorDiagrama = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const engineRef = useRef(null);
-  const modelRef = useRef(null);
   const socketRef = useRef(null);
-  const canvasRef = useRef(null);
   const canvasContainerRef = useRef(null);
   // Viewport visible del canvas (área recortada por CanvasContainer)
   const viewportRef = useRef(null);
@@ -96,11 +93,11 @@ const EditorDiagrama = () => {
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [httpConnected, setHttpConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
 
   // Estados para UI
   const [selectedClass, setSelectedClass] = useState(null);
-  const [targetClass, setTargetClass] = useState(null);
   const [isCreatingRelation, setIsCreatingRelation] = useState(false);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -117,7 +114,6 @@ const EditorDiagrama = () => {
 
   // Estados para modales y exportación
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoadingExport, setIsLoadingExport] = useState(false);
 
   // Estados para exportación y modales
   const [jdlContent, setJdlContent] = useState(null);
@@ -233,7 +229,7 @@ const EditorDiagrama = () => {
       // Verificar si es un patch de operaciones o datos directos
       if (patch.classes && patch.relations) {
         // Es la estructura directa de datos (como la de tu base de datos)
-        console.log('📊 Aplicando estructura de datos completa');
+        console.log('Aplicando estructura de datos completa');
         setClasses(patch.classes);
         setRelations(patch.relations);
         if (patch.titulo) {
@@ -241,10 +237,10 @@ const EditorDiagrama = () => {
         }
       } else if (Array.isArray(patch)) {
         // Es un array de operaciones patch
-        console.log('🔧 Aplicando patch de operaciones');
+        console.log('Aplicando patch de operaciones');
         applyAIPatch(patch);
       } else {
-        console.error('❌ Formato de patch no reconocido:', patch);
+        console.error('Formato de patch no reconocido:', patch);
       }
     };
 
@@ -326,7 +322,7 @@ const EditorDiagrama = () => {
          // Sanitizar posiciones para evitar NaN
          const sanitized = sanitizeClassesPositions(uniqueClasses);
          setClasses(sanitized);
-         console.log('📋 Clases cargadas:', uniqueClasses.length);
+         console.log('Clases cargadas:', uniqueClasses.length);
          
          setRelations(uniqueRelations);
         
@@ -338,6 +334,7 @@ const EditorDiagrama = () => {
         }
         
         
+        setHttpConnected(true); // Marcar HTTP como conectado
         setLoading(false);
       } catch (error) {
         console.error('Error al cargar el diagrama:', error);
@@ -347,7 +344,7 @@ const EditorDiagrama = () => {
     };
 
     cargarDiagrama();
-  }, [id]);
+  }, [id, sanitizeClassesPositions]);
 
   // Mouse move effect for relations con mejor cálculo de posición
   useEffect(() => {
@@ -484,7 +481,7 @@ const EditorDiagrama = () => {
       
       // Verificar que patch sea un array válido
       if (!Array.isArray(patch)) {
-        console.error('❌ Patch no es un array válido:', patch);
+        console.error('Patch no es un array válido:', patch);
         return;
       }
       
@@ -501,7 +498,7 @@ const EditorDiagrama = () => {
                     cls.id === change.id ? { ...cls, ...change.data } : cls
                   )
                 );
-                console.log(`✅ Clase ${change.id} modificada con datos:`, change.data);
+                console.log(`Clase ${change.id} modificada con datos:`, change.data);
               } else {
                 console.warn('⚠️ Datos incompletos para modify_class:', change);
               }
@@ -531,7 +528,7 @@ const EditorDiagrama = () => {
                        methods: classData.methods || []
                      };
                      setClasses(prevClasses => [...prevClasses, newClass]);
-                     console.log(`✅ Clase ${classData.name} agregada en posición (${newClass.x}, ${newClass.y}):`, newClass);
+                     console.log(`Clase ${classData.name} agregada en posición (${newClass.x}, ${newClass.y}):`, newClass);
                    } else {
                      console.warn('⚠️ Datos incompletos para add_class:', change);
                    }
@@ -545,7 +542,7 @@ const EditorDiagrama = () => {
                     rel.id === change.id ? { ...rel, ...change.data } : rel
                   )
                 );
-                console.log(`✅ Relación ${change.id} modificada con datos:`, change.data);
+                console.log(`Relación ${change.id} modificada con datos:`, change.data);
               } else {
                 console.warn('⚠️ Datos incompletos para modify_relation:', change);
               }
@@ -563,7 +560,7 @@ const EditorDiagrama = () => {
                   multiplicidadDestino: change.data.multiplicidadDestino
                 };
                 setRelations(prevRelations => [...prevRelations, newRelation]);
-                console.log(`✅ Relación ${change.data.type} agregada:`, newRelation);
+                console.log(`Relación ${change.data.type} agregada:`, newRelation);
               } else {
                 console.warn('⚠️ Datos incompletos para add_relation:', change);
               }
@@ -575,7 +572,7 @@ const EditorDiagrama = () => {
                 setRelations(prevRelations =>
                   prevRelations.filter(rel => rel.id !== change.id)
                 );
-                console.log(`✅ Relación ${change.id} eliminada`);
+                console.log(`Relación ${change.id} eliminada`);
               } else {
                 console.warn('⚠️ ID faltante para remove_relation:', change);
               }
@@ -589,7 +586,7 @@ const EditorDiagrama = () => {
                 setRelations(prevRelations =>
                   prevRelations.filter(rel => rel.source !== change.id && rel.target !== change.id)
                 );
-                console.log(`✅ Clase ${change.id} eliminada`);
+                console.log(`Clase ${change.id} eliminada`);
               } else {
                 console.warn('⚠️ ID faltante para remove_class:', change);
               }
@@ -599,14 +596,14 @@ const EditorDiagrama = () => {
               console.warn('⚠️ Tipo de cambio no reconocido:', change.type, change);
           }
         } catch (changeError) {
-          console.error(`❌ Error procesando cambio ${index + 1}:`, changeError, change);
+          console.error(`Error procesando cambio ${index + 1}:`, changeError, change);
         }
       });
       
       
-      console.log('✅ Patch de IA aplicado exitosamente');
+      console.log('Patch de IA aplicado exitosamente');
     } catch (error) {
-      console.error('❌ Error aplicando patch de IA:', error);
+      console.error('Error aplicando patch de IA:', error);
     }
   };
 
@@ -656,7 +653,7 @@ const EditorDiagrama = () => {
         }, 500);
       }
     }
-  }, [isLoading, fitToBounds]); // Removido classes.length de las dependencias
+  }, [isLoading, fitToBounds, classes]);
 
 
   const handleClassUpdate = (classId, updatedData) => {
@@ -708,16 +705,25 @@ const EditorDiagrama = () => {
       // Evitar solapamiento con clases existentes
       const spacing = 350;
       let attempts = 0;
-      while (attempts < 10) {
-        const hasOverlap = classes.some(cls => 
-          Math.abs(cls.x - newX) < spacing && Math.abs(cls.y - newY) < spacing
+      let currentX = newX;
+      let currentY = newY;
+      
+      const checkOverlap = (x, y) => {
+        return classes.some(cls => 
+          Math.abs(cls.x - x) < spacing && Math.abs(cls.y - y) < spacing
         );
-        
-        if (!hasOverlap) break;
+      };
+      
+      while (attempts < 10) {
+        if (!checkOverlap(currentX, currentY)) {
+          newX = currentX;
+          newY = currentY;
+          break;
+        }
         
         // Mover hacia la derecha y abajo en espiral
-        newX += spacing * 0.7;
-        newY += spacing * 0.3;
+        currentX += spacing * 0.7;
+        currentY += spacing * 0.3;
         attempts++;
       }
     }
@@ -742,7 +748,7 @@ const EditorDiagrama = () => {
     }
 
     // Feedback visual
-    console.log(`✅ Clase "${newClass.name}" agregada exitosamente en posición (${Math.round(newX)}, ${Math.round(newY)})`);
+    console.log(`Clase "${newClass.name}" agregada exitosamente en posición (${Math.round(newX)}, ${Math.round(newY)})`);
   };
 
   const handleClassClick = (classItem) => {
@@ -760,21 +766,19 @@ const EditorDiagrama = () => {
         }
       } else if (selectedClass && selectedClass.id !== classItem.id) {
         // Segunda clase seleccionada - crear relación
-        setTargetClass(classItem);
-        console.log(`🎯 Segunda clase seleccionada: ${classItem.name}, creando relación ${relationType}`);
+        console.log(`Segunda clase seleccionada: ${classItem.name}, creando relación ${relationType}`);
         
         // Crear la relación según el tipo
         const success = createRelationByType(selectedClass, classItem, relationType);
         
         if (success) {
           // Feedback visual de éxito
-          console.log(`✅ Relación ${relationType} creada exitosamente entre ${selectedClass.name} y ${classItem.name}`);
+          console.log(`Relación ${relationType} creada exitosamente entre ${selectedClass.name} y ${classItem.name}`);
         }
       } else if (selectedClass && selectedClass.id === classItem.id) {
         // Deseleccionar si se hace clic en la misma clase
-        console.log(`❌ Deseleccionando clase: ${classItem.name}`);
+        console.log(`Deseleccionando clase: ${classItem.name}`);
         setSelectedClass(null);
-        setTargetClass(null);
         
         // Limpiar feedback visual
         const classElement = document.querySelector(`[data-class-id="${classItem.id}"]`);
@@ -832,9 +836,8 @@ const EditorDiagrama = () => {
     });
     
     setSelectedClass(null);
-    setTargetClass(null);
     setIsCreatingRelation(false);
-    console.log('✅ Estado de creación de relaciones reseteado - todas las clases deseleccionadas');
+    console.log('Estado de creación de relaciones reseteado - todas las clases deseleccionadas');
   };
 
   // Función auxiliar para limpiar la selección de clases
@@ -847,8 +850,7 @@ const EditorDiagrama = () => {
     });
     
     setSelectedClass(null);
-    setTargetClass(null);
-    console.log('🧹 Selección de clases limpiada');
+    console.log('Selección de clases limpiada');
   };
 
   // Función para cancelar la creación de relaciones
@@ -859,7 +861,6 @@ const EditorDiagrama = () => {
   // Función para generar JDL usando el nuevo endpoint
   const generateSpringBootProject = async () => {
     const token = localStorage.getItem('token');
-    setIsLoadingExport(true);
     setExportError(null);
     setJdlContent(null);
     setZipDownloadUrl(null);
@@ -917,7 +918,7 @@ const EditorDiagrama = () => {
       setJdlContent(null);
       setZipDownloadUrl(null);
     } finally {
-      setIsLoadingExport(false);
+      // Loading completed
     }
   };
 
@@ -1258,7 +1259,7 @@ const exportarXMI = () => {
       const importedRelations = [];
       const classIdMap = new Map(); // Mapeo de IDs XMI a IDs internos
   
-      console.log("🔍 Iniciando importación XMI mejorada...");
+      console.log("Iniciando importación XMI mejorada...");
   
       // 1. Extraer clases regulares (uml:Class)
       const classElements = xmlDoc.getElementsByTagName("packagedElement");
@@ -1289,7 +1290,7 @@ const exportarXMI = () => {
           
           classIdMap.set(classObj.id, classObj.id);
           importedClasses.push(classObj);
-          console.log(`✅ Clase importada: ${classObj.name} (${classObj.id})`);
+          console.log(`Clase importada: ${classObj.name} (${classObj.id})`);
         }
       }
   
@@ -1321,12 +1322,12 @@ const exportarXMI = () => {
           
           classIdMap.set(classObj.id, classObj.id);
           importedClasses.push(classObj);
-          console.log(`✅ Clase intermedia importada: ${classObj.name} (${classObj.id})`);
+          console.log(`Clase intermedia importada: ${classObj.name} (${classObj.id})`);
         }
       }
   
       // 3. Extraer relaciones de asociación - MEJORADO
-      console.log(`🔍 Procesando ${classElements.length} elementos para relaciones...`);
+      console.log(`Procesando ${classElements.length} elementos para relaciones...`);
       let associationCount = 0;
       
       for (let i = 0; i < classElements.length; i++) {
@@ -1335,7 +1336,7 @@ const exportarXMI = () => {
         
         if (xmiType === "uml:Association") {
           associationCount++;
-          console.log(`🔍 Procesando asociación ${associationCount}: ${classEl.getAttribute("xmi:id")}`);
+          console.log(`Procesando asociación ${associationCount}: ${classEl.getAttribute("xmi:id")}`);
           const ownedEnds = classEl.getElementsByTagName("ownedEnd");
           console.log(`   - ownedEnds encontrados: ${ownedEnds.length}`);
           
@@ -1386,7 +1387,7 @@ const exportarXMI = () => {
               
               const aggregation = sourceEnd.getAttribute("aggregation") || "none";
               
-              console.log(`🔍 Procesando relación:`);
+              console.log(`Procesando relación:`);
               console.log(`   - sourceEnd HTML:`, sourceEnd.outerHTML);
               console.log(`   - targetEnd HTML:`, targetEnd.outerHTML);
               console.log(`   - sourceId: ${sourceId}`);
@@ -1419,7 +1420,7 @@ const exportarXMI = () => {
                 };
                 
                 importedRelations.push(relationObj);
-                console.log(`✅ Relación importada: ${relationType} (${sourceId} → ${targetId})`);
+                console.log(`Relación importada: ${relationType} (${sourceId} → ${targetId})`);
               } else {
                 console.log(`⚠️ Relación omitida: clases no encontradas (${sourceId}, ${targetId})`);
               }
@@ -1501,7 +1502,7 @@ const exportarXMI = () => {
               // Debug específico para la composición auto-empleados
               if ((sourceId === "EAID_1018C124_0A6B_4c2f_9D5D_162B9D4613D3" && targetId === "EAID_2D645AEB_B784_4d5b_BFB9_DF6A841238F7") ||
                   (sourceId === "EAID_2D645AEB_B784_4d5b_BFB9_DF6A841238F7" && targetId === "EAID_1018C124_0A6B_4c2f_9D5D_162B9D4613D3")) {
-                console.log(`   - 🎯 ESTA ES LA COMPOSICIÓN AUTO-EMPLEADOS!`);
+                console.log(`   - ESTA ES LA COMPOSICIÓN AUTO-EMPLEADOS!`);
                 console.log(`   - sourceEnd aggregation: ${sourceEnd.getAttribute("aggregation")}`);
                 console.log(`   - targetEnd aggregation: ${targetEnd.getAttribute("aggregation")}`);
               }
@@ -1550,7 +1551,7 @@ const exportarXMI = () => {
                 };
                 
                 importedRelations.push(relationObj);
-                console.log(`✅ Relación importada desde clases: ${relationType} (${finalSourceId} → ${finalTargetId})`);
+                console.log(`Relación importada desde clases: ${relationType} (${finalSourceId} → ${finalTargetId})`);
               } else {
                 console.log(`⚠️ Relación desde clases omitida: clases no encontradas (${sourceId}, ${targetId})`);
               }
@@ -1562,18 +1563,18 @@ const exportarXMI = () => {
         }
       }
       
-      console.log(`🔍 Total de asociaciones procesadas: ${associationCount}`);
+      console.log(`Total de asociaciones procesadas: ${associationCount}`);
   
       // 4. Extraer relaciones de generalización
       const generalizationElements = xmlDoc.getElementsByTagName("generalization");
-      console.log(`🔍 Encontradas ${generalizationElements.length} generalizaciones`);
+      console.log(`Encontradas ${generalizationElements.length} generalizaciones`);
       
       for (let i = 0; i < generalizationElements.length; i++) {
         const relationEl = generalizationElements[i];
         const sourceId = relationEl.getAttribute("specific");
         const targetId = relationEl.getAttribute("general");
         
-        console.log(`🔍 Procesando generalización ${i + 1}: ${sourceId} → ${targetId}`);
+        console.log(`Procesando generalización ${i + 1}: ${sourceId} → ${targetId}`);
         console.log(`   - Elemento HTML:`, relationEl.outerHTML);
         console.log(`   - sourceId en mapa: ${classIdMap.has(sourceId)}`);
         console.log(`   - targetId en mapa: ${classIdMap.has(targetId)}`);
@@ -1588,7 +1589,7 @@ const exportarXMI = () => {
             multiplicidadDestino: "",
           };
           importedRelations.push(relationObj);
-          console.log(`✅ Generalización importada: ${sourceId} → ${targetId}`);
+          console.log(`Generalización importada: ${sourceId} → ${targetId}`);
         } else {
           console.log(`⚠️ Generalización omitida: clases no encontradas (${sourceId}, ${targetId})`);
           
@@ -1612,7 +1613,7 @@ const exportarXMI = () => {
                 };
                 
                 importedRelations.push(relationObj);
-                console.log(`✅ Generalización importada desde clase padre: ${parentId} → ${targetId}`);
+                console.log(`Generalización importada desde clase padre: ${parentId} → ${targetId}`);
               } else {
                 console.log(`   - Clase padre no encontrada en mapa: ${parentId}`);
               }
@@ -1630,7 +1631,7 @@ const exportarXMI = () => {
           const ownedEnds = classEl.getElementsByTagName("ownedEnd");
           const memberEnds = classEl.getElementsByTagName("memberEnd");
           
-          console.log(`🔍 Procesando AssociationClass: ${classEl.getAttribute("name")} (${classEl.getAttribute("xmi:id")})`);
+          console.log(`Procesando AssociationClass: ${classEl.getAttribute("name")} (${classEl.getAttribute("xmi:id")})`);
           console.log(`   - ownedEnds: ${ownedEnds.length}`);
           console.log(`   - memberEnds: ${memberEnds.length}`);
           
@@ -1704,7 +1705,7 @@ const exportarXMI = () => {
                 };
                 
                 importedRelations.push(relation1, relation2);
-                console.log(`✅ Relaciones de clase intermedia creadas: ${sourceId} → ${classEl.getAttribute("xmi:id")} ← ${targetId}`);
+                console.log(`Relaciones de clase intermedia creadas: ${sourceId} → ${classEl.getAttribute("xmi:id")} ← ${targetId}`);
               } else {
                 console.log(`⚠️ AssociationClass omitida: clases no encontradas (${sourceId}, ${targetId})`);
               }
@@ -1713,15 +1714,15 @@ const exportarXMI = () => {
         }
       }
   
-      console.log(`📊 Resumen de importación:`);
+      console.log(`Resumen de importación:`);
       console.log(`   - Clases: ${importedClasses.length}`);
       console.log(`   - Relaciones: ${importedRelations.length}`);
       console.log("Clases importadas:", importedClasses);
       console.log("Relaciones importadas:", importedRelations);
       
       // Debug adicional
-      console.log("🔍 Mapa de IDs de clases:", Array.from(classIdMap.keys()));
-      console.log("🔍 Todas las clases encontradas en XMI:");
+      console.log("Mapa de IDs de clases:", Array.from(classIdMap.keys()));
+      console.log("Todas las clases encontradas en XMI:");
       for (let i = 0; i < classElements.length; i++) {
         const classEl = classElements[i];
         const xmiType = classEl.getAttribute("xmi:type");
@@ -1735,7 +1736,7 @@ const exportarXMI = () => {
       setRelations(importedRelations);
       
       // Feedback visual
-      alert(`✅ Importación exitosa!\n\nClases: ${importedClasses.length}\nRelaciones: ${importedRelations.length}`);
+      alert(`Importación exitosa!\n\nClases: ${importedClasses.length}\nRelaciones: ${importedRelations.length}`);
     };
   
     reader.readAsText(file);
@@ -1773,7 +1774,7 @@ const exportarXMI = () => {
   // Función removida - no se usa manejo de archivos ZIP
 
   // --- Invitaciones & Usuarios ---
-  const fetchUsuarios = async () => {
+  const fetchUsuarios = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
@@ -1784,7 +1785,31 @@ const exportarXMI = () => {
     } catch (err) {
       console.error('Error obteniendo usuarios del diagrama:', err?.response?.data || err.message);
     }
-  };
+  }, [id]);
+
+  const fetchCodigoInvitacion = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      console.log('Buscando código de invitación existente...');
+      const resp = await axios.get(API_CONFIG.getUrl(`/api/invitations/${id}/code`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      // Intentar distintas claves posibles que pueda devolver el backend
+      const codigo = resp.data?.codigo || resp.data?.code || resp.data?.codigoInvitacion || resp.data?.invitationCode;
+      console.log('Respuesta del servidor:', resp.data);
+      console.log('Código encontrado:', codigo);
+      if (codigo) {
+        setCodigoInvitacion(codigo);
+        console.log('Código de invitación cargado:', codigo);
+      } else {
+        console.log('No se encontró código de invitación existente');
+      }
+    } catch (err) {
+      console.error('Error obteniendo código de invitación:', err?.response?.data || err.message);
+      // No mostrar error al usuario si no hay código existente
+    }
+  }, [id]);
 
   const generarCodigoInvitacion = async () => {
     try {
@@ -1793,14 +1818,18 @@ const exportarXMI = () => {
         alert('No hay token de autenticación. Inicia sesión nuevamente.');
         return;
       }
+      console.log('Generando nuevo código de invitación...');
       const resp = await axios.post(API_CONFIG.getUrl(`/api/invitations/${id}/invitations`), {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // Intentar distintas claves posibles que pueda devolver el backend
       const nuevoCodigo = resp.data?.codigo || resp.data?.code || resp.data?.codigoInvitacion || resp.data?.invitationCode;
+      console.log('Respuesta del servidor al generar:', resp.data);
+      console.log('Nuevo código generado:', nuevoCodigo);
       if (nuevoCodigo) {
         setCodigoInvitacion(nuevoCodigo);
-    } else {
+        console.log('Código de invitación actualizado:', nuevoCodigo);
+      } else {
         console.warn('Respuesta inesperada al generar código de invitación:', resp.data);
         alert('Código generado pero no se pudo interpretar la respuesta. Revisa consola.');
       }
@@ -1830,19 +1859,16 @@ const exportarXMI = () => {
     }
   };
 
-  // Cargar usuarios al montar / cambiar id
+  // Cargar usuarios y código de invitación al montar / cambiar id
   useEffect(() => {
     fetchUsuarios();
-  }, [id]); // fetchUsuarios está definido arriba y no cambia
+    fetchCodigoInvitacion();
+  }, [id, fetchUsuarios, fetchCodigoInvitacion]);
 
   // Funciones adicionales del editor limpio
   const abrirModalTitulo = () => {
     setNewTitle(titulo);
     setShowTitleModal(true);
-  };
-
-  const abrirModal = () => {
-    setShowBackendModal(true);
   };
 
   const guardarTitulo = async () => {
@@ -1865,7 +1891,7 @@ const exportarXMI = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('❌ No hay token de autenticación. Inicia sesión nuevamente.');
+        alert('No hay token de autenticación. Inicia sesión nuevamente.');
         return;
       }
       
@@ -1884,13 +1910,13 @@ const exportarXMI = () => {
         });
       }
 
-      console.log('✅ Diagrama guardado exitosamente');
+      console.log('Diagrama guardado exitosamente');
       
       // Feedback visual opcional
       const saveButton = document.querySelector('[data-save-button]');
       if (saveButton) {
         const originalText = saveButton.textContent;
-        saveButton.textContent = '✅ Guardado';
+        saveButton.textContent = 'Guardado';
         saveButton.style.background = '#10B981';
         setTimeout(() => {
           saveButton.textContent = originalText;
@@ -1899,8 +1925,8 @@ const exportarXMI = () => {
       }
       
     } catch (error) {
-      console.error('❌ Error guardando diagrama:', error);
-      alert(`❌ Error al guardar: ${error.response?.data?.message || error.message}`);
+      console.error('Error guardando diagrama:', error);
+      alert(`Error al guardar: ${error.response?.data?.message || error.message}`);
     }
   };
 
@@ -1912,7 +1938,6 @@ const exportarXMI = () => {
     setIsModalOpen(false);
     setJdlContent(null);
     setExportError(null);
-    setIsLoadingExport(false);
   };
   const handleDiagramUpdateFromAgent = useCallback((updatedData) => {
     if (updatedData.classes) {
@@ -2155,12 +2180,18 @@ const exportarXMI = () => {
             />
           </label>
           <Button $variant="primary" onClick={() => {
-            console.log('🔄 Toggle AI Chat desde toolbar:', !chatAIVisible);
+            console.log('Toggle AI Chat desde toolbar:', !chatAIVisible);
             setChatAIVisible(!chatAIVisible);
           }}>
             <Bot size={16} />
             {chatAIVisible ? 'Ocultar IA' : 'Mostrar IA'}
             </Button>
+          {!codigoInvitacion && (
+            <Button $variant="success" onClick={generarCodigoInvitacion}>
+              <Key size={16} />
+              Generar Código Invitación
+            </Button>
+          )}
         </ToolbarGroup>
         
         {/* Status bar en toolbar */}
@@ -2168,9 +2199,12 @@ const exportarXMI = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {/* Estado de conexión */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {isConnected ? <Wifi size={16} color="#48bb78" /> : <WifiOff size={16} color="#f56565" />}
-              <span style={{ fontSize: '13px', color: isConnected ? '#48bb78' : '#f56565', fontWeight: '500' }}>
-                {isConnected ? 'Conectado' : 'Desconectado'}
+              {(isConnected || httpConnected) ? <Wifi size={16} color="#48bb78" /> : <WifiOff size={16} color="#f56565" />}
+              <span style={{ fontSize: '13px', color: (isConnected || httpConnected) ? '#48bb78' : '#f56565', fontWeight: '500' }}>
+                {(isConnected || httpConnected) ? 
+                  (isConnected && httpConnected ? 'Conectado (HTTP + WebSocket)' : 
+                   isConnected ? 'Conectado (WebSocket)' : 'Conectado (HTTP)') 
+                  : 'Desconectado'}
               </span>
             </div>
             
@@ -2585,7 +2619,7 @@ const exportarXMI = () => {
                 borderRadius: '8px',
                 marginBottom: '20px'
               }}>
-                <p>❌ {exportError}</p>
+                <p>{exportError}</p>
                 <Button 
                   $variant="primary" 
                   onClick={generateSpringBootProject}
@@ -2601,7 +2635,7 @@ const exportarXMI = () => {
             {jdlContent && (
               <div>
                 <div style={{ marginBottom: '16px', color: '#2e7d32' }}>
-                  <h3>✅ JDL generado exitosamente</h3>
+                  <h3>JDL generado exitosamente</h3>
                   <p style={{ color: '#666' }}>Tu archivo JDL está listo para usar con JHipster:</p>
                 </div>
                 
@@ -2768,19 +2802,19 @@ const exportarXMI = () => {
                 lineHeight: '1.6'
               }}>
                 <div style={{ marginBottom: '8px' }}>
-                  <strong>🔍 Zoom:</strong> Ctrl + Rueda del mouse
+                  <strong>Zoom:</strong> Ctrl + Rueda del mouse
           </div>
                 <div style={{ marginBottom: '8px' }}>
                   <strong>🖱️ Arrastrar:</strong> Ctrl + Click izquierdo y arrastrar
                 </div>
                 <div style={{ marginBottom: '8px' }}>
-                  <strong>🔄 Reset:</strong> Botón "Reset" para volver al zoom 100%
+                  <strong>Reset:</strong> Botón "Reset" para volver al zoom 100%
                 </div>
                 <div style={{ marginBottom: '8px' }}>
-                  <strong>🎯 Centrar:</strong> Botón "Centrar" para mostrar todas las clases
+                  <strong>Centrar:</strong> Botón "Centrar" para mostrar todas las clases
                 </div>
                 <div>
-                  <strong>📊 Indicador:</strong> El porcentaje de zoom se muestra en la barra de estado
+                  <strong>Indicador:</strong> El porcentaje de zoom se muestra en la barra de estado
                 </div>
               </div>
             </div>
@@ -2797,7 +2831,7 @@ const exportarXMI = () => {
       <AIAssistant
         isOpen={chatAIVisible}
         onToggle={() => {
-          console.log('🔄 Toggle AI Chat:', !chatAIVisible);
+          console.log('Toggle AI Chat:', !chatAIVisible);
           setChatAIVisible(!chatAIVisible);
         }}
         zIndexBase={1700}
