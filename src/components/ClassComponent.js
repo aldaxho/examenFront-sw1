@@ -77,30 +77,23 @@ const ClassHeader = styled.div`
 const DeleteButton = styled.button`
   position: absolute;
   right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(239, 68, 68, 0.9);
+  top: 12px;
+  background: transparent;
   border: none;
-  color: white;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-  padding: 8px;
-  border-radius: 8px;
-  opacity: 0.8;
-  transition: all 0.3s ease;
-  width: 32px;
-  height: 32px;
+  padding: 0;
+  border-radius: 0;
+  transition: color 0.2s ease, transform 0.2s ease;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 
   &:hover {
-    opacity: 1;
-    background: #EF4444;
-    transform: translateY(-50%) scale(1.1);
-  }
-
-  i {
-    font-size: 14px;
+    color: #EF4444;
+    transform: scale(1.05);
   }
 `;
 
@@ -205,38 +198,25 @@ const AddButton = styled.button`
 `;
 
 const RemoveButton = styled.button`
-  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-  color: white;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
   border: none;
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 6px;
+  padding: 0;
   margin-left: 8px;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-  width: 32px;
-  height: 32px;
-  display: flex;
+  font-size: 14px;
+  font-weight: 800;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.8;
+  transition: color 0.2s ease, transform 0.2s ease;
 
   &:hover {
-    opacity: 1;
-    background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
-    transform: translateY(-1px) scale(1.05);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-  }
-
-  &:active {
-    transform: translateY(0) scale(1);
-  }
-
-  i {
-    font-size: 14px;
-    color: white;
+    color: #EF4444;
+    transform: scale(1.05);
   }
 `;
 
@@ -288,6 +268,8 @@ const ClassComponent = ({
   const containerRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isEditingAnyField, setIsEditingAnyField] = useState(false);
+  const rafIdRef = useRef(null);
+  const pendingPosRef = useRef(null);
 
   useEffect(() => {
     setName(className);
@@ -310,15 +292,6 @@ const ClassComponent = ({
       const offsetX = e.clientX - x;
       const offsetY = e.clientY - y;
       
-      console.log('Iniciando arrastre:', { 
-        mouseX: e.clientX, 
-        mouseY: e.clientY, 
-        currentX: x,
-        currentY: y,
-        offsetX, 
-        offsetY
-      });
-      
       setIsDragging(true);
       
       onSelect && onSelect();
@@ -330,17 +303,17 @@ const ClassComponent = ({
         const newX = e.clientX - offsetX;
         const newY = e.clientY - offsetY;
         
-        console.log('Movimiento:', { 
-          mouseX: e.clientX, 
-          mouseY: e.clientY, 
-          offsetX, 
-          offsetY, 
-          newX, 
-          newY 
-        });
-        
-        // Actualizar posición
-        onPositionChange && onPositionChange({ x: newX, y: newY });
+        // Throttle con requestAnimationFrame para suavizar arrastre
+        pendingPosRef.current = { x: newX, y: newY };
+        if (rafIdRef.current == null) {
+          rafIdRef.current = requestAnimationFrame(() => {
+            const pos = pendingPosRef.current;
+            if (pos && onPositionChange) {
+              onPositionChange(pos);
+            }
+            rafIdRef.current = null;
+          });
+        }
         
         // Emitir movimiento en tiempo real al servidor
         if (socket) {
@@ -355,6 +328,15 @@ const ClassComponent = ({
       const handleMouseUp = (e) => {
         e.preventDefault();
         setIsDragging(false);
+        // Forzar una última actualización pendiente si existe
+        if (rafIdRef.current) {
+          cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
+        if (pendingPosRef.current && onPositionChange) {
+          onPositionChange(pendingPosRef.current);
+        }
+        pendingPosRef.current = null;
         
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
@@ -511,8 +493,14 @@ const ClassComponent = ({
           <h4 onDoubleClick={() => setIsEditing(true)}>{name}</h4>
         )}
         
-        <DeleteButton onClick={onDelete}>
-          <X size={16} />
+        <DeleteButton onClick={onDelete} aria-label="Eliminar clase" title="Eliminar clase">
+          <span style={{
+            display: 'inline-block',
+            fontSize: '16px',
+            lineHeight: 1,
+            fontWeight: 800,
+            userSelect: 'none'
+          }}>×</span>
         </DeleteButton>
       </ClassHeader>
 
@@ -532,8 +520,14 @@ const ClassComponent = ({
                 onBlur={() => setIsEditingAnyField(false)}
                 placeholder="nombre : tipo"
               />
-              <RemoveButton onClick={() => removeAttribute(index)} title="Eliminar atributo">
-                <X size={16} />
+              <RemoveButton onClick={() => removeAttribute(index)} title="Eliminar atributo" aria-label="Eliminar atributo">
+                <span style={{
+                  display: 'inline-block',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  fontWeight: 800,
+                  userSelect: 'none'
+                }}>×</span>
               </RemoveButton>
             </ListItem>
           ))}
@@ -560,8 +554,14 @@ const ClassComponent = ({
                 onBlur={() => setIsEditingAnyField(false)}
                 placeholder="nombre(param : tipo) : tipo"
               />
-              <RemoveButton onClick={() => removeMethod(index)} title="Eliminar método">
-                <X size={16} />
+              <RemoveButton onClick={() => removeMethod(index)} title="Eliminar método" aria-label="Eliminar método">
+                <span style={{
+                  display: 'inline-block',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  fontWeight: 800,
+                  userSelect: 'none'
+                }}>×</span>
               </RemoveButton>
             </ListItem>
           ))}

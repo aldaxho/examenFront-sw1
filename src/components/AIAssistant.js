@@ -1,61 +1,65 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled, { css } from 'styled-components';
 import API_CONFIG from '../services/apiConfig';
-// VS Code style panel + draggable + resizable
+// Modern chat panel with clean design
 const PanelWrapper = styled.div`
 	position: fixed;
 	top: 0;
 	right: 0;
 	height: 100vh;
-	width: ${(p) => p.$width || 380}px;
-	background: #1e1e1e;
-	color: #ddd;
+	width: ${(p) => p.$width || 420}px;
+	background: #ffffff;
+	color: #374151;
 	display: flex;
 	flex-direction: column;
-	border-left: 1px solid #333;
-	box-shadow: -2px 0 6px rgba(0,0,0,0.4);
-	z-index: 1600; /* > usuarios panel */
-	font-family: 'Segoe UI', system-ui, sans-serif;
+	border-left: 1px solid #e5e7eb;
+	box-shadow: -4px 0 20px rgba(0,0,0,0.08);
+	z-index: 1600;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 	${(p) => p.$hidden && css`display:none;`}
+	transition: all 0.3s ease;
 `;
 
 const Header = styled.div`
-	height: 38px;
+	height: 60px;
 	display: flex;
 	align-items: center;
-	padding: 0 10px;
-	background: linear-gradient(#2a2d2e, #252729);
-	border-bottom: 1px solid #2f3234;
+	padding: 0 20px;
+	background: #ffffff;
+	border-bottom: 1px solid #e5e7eb;
 	cursor: move;
-	gap: 8px;
+	gap: 12px;
+	position: relative;
 `;
 
 const Title = styled.div`
-	font-size: 13px;
-	font-weight: 500;
+	font-size: 18px;
+	font-weight: 600;
 	flex: 1;
-	color: #ddd;
+	color: #111827;
 	user-select: none;
 `;
 
 const IconButton = styled.button`
-	background: rgba(255, 255, 255, 0.1);
-	border: 1px solid rgba(255, 255, 255, 0.2);
-	color: #fff;
+	background: #f3f4f6;
+	border: 1px solid #d1d5db;
+	color: #6b7280;
 	cursor: pointer;
-	width: 32px;
-	height: 32px;
-	border-radius: 4px;
+	width: 36px;
+	height: 36px;
+	border-radius: 8px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	font-size: 16px;
-	font-weight: bold;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	
 	&:hover { 
-		background: rgba(255, 255, 255, 0.2); 
-		color: #fff; 
-		transform: scale(1.1);
-		border-color: rgba(255, 255, 255, 0.4);
+		background: #e5e7eb; 
+		color: #374151; 
+		transform: scale(1.05);
+		border-color: #9ca3af;
 	}
 	&:disabled {
 		opacity: 0.5;
@@ -66,27 +70,51 @@ const IconButton = styled.button`
 const Messages = styled.div`
 	flex: 1;
 	overflow-y: auto;
-	padding: 12px 14px 70px;
-	font-size: 13px;
-	line-height: 1.45;
+	padding: 20px 20px 100px;
+	font-size: 15px;
+	line-height: 1.6;
 	scrollbar-width: thin;
-	&::-webkit-scrollbar { width: 8px; }
-	&::-webkit-scrollbar-track { background: #1e1e1e; }
-	&::-webkit-scrollbar-thumb { background: #3a3d41; border-radius: 4px; }
+	scrollbar-color: #d1d5db transparent;
+	
+	&::-webkit-scrollbar { 
+		width: 6px; 
+	}
+	&::-webkit-scrollbar-track { 
+		background: transparent; 
+	}
+	&::-webkit-scrollbar-thumb { 
+		background: #d1d5db; 
+		border-radius: 3px; 
+	}
+	&::-webkit-scrollbar-thumb:hover {
+		background: #9ca3af;
+	}
 `;
 
 const Bubble = styled.div`
-	margin-bottom: 14px;
+	margin-bottom: 24px;
 	display: flex;
 	align-items: flex-start;
-	gap: 10px;
+	gap: 12px;
+	animation: fadeInUp 0.3s ease-out;
+	
+	@keyframes fadeInUp {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
 `;
 
 const BubbleAvatar = styled.div`
-	width: 28px;
-	height: 28px;
-	border-radius: 4px;
-	background: ${(p) => p.$user ? '#005fb8' : '#444'};
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: ${(p) => p.$user ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)'};
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -94,16 +122,29 @@ const BubbleAvatar = styled.div`
 	font-weight: 600;
 	color: #fff;
 	user-select: none;
+	flex-shrink: 0;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 `;
 
 const BubbleContent = styled.div`
 	flex: 1;
-	background: ${(p) => p.$user ? '#003b5c' : '#2d2f31'};
-	border: 1px solid ${(p) => p.$user ? '#004b74' : '#37393b'};
-	padding: 8px 10px;
-	border-radius: 6px;
+	background: ${(p) => p.$user ? '#f3f4f6' : '#ffffff'};
+	border: 1px solid ${(p) => p.$user ? '#e5e7eb' : '#e5e7eb'};
+	padding: 12px 16px;
+	border-radius: 18px;
 	white-space: pre-wrap;
 	word-break: break-word;
+	color: ${(p) => p.$user ? '#374151' : '#111827'};
+	font-weight: 400;
+	line-height: 1.5;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+	position: relative;
+	
+	${(p) => p.$user ? `
+		border-bottom-right-radius: 6px;
+	` : `
+		border-bottom-left-radius: 6px;
+	`}
 `;
 
 const InputBar = styled.form`
@@ -111,41 +152,99 @@ const InputBar = styled.form`
 	left: 0;
 	bottom: 0;
 	width: 100%;
-	background: #252526;
-	border-top: 1px solid #333;
-	padding: 8px 10px 10px;
+	background: #ffffff;
+	border-top: 1px solid #e5e7eb;
+	padding: 16px 20px;
 	display: flex;
-	gap: 8px;
+	gap: 12px;
+	align-items: flex-end;
+	box-sizing: border-box;
 `;
 
 const TextArea = styled.textarea`
 	flex: 1;
 	resize: none;
-	background: #1e1e1e;
-	border: 1px solid #3a3d41;
-	color: #ddd;
-	font-size: 13px;
-	line-height: 1.35;
-	padding: 6px 8px;
-	border-radius: 4px;
+	background: #f9fafb;
+	border: 2px solid #e5e7eb;
+	color: #111827;
+	font-size: 15px;
+	line-height: 1.5;
+	padding: 12px 16px;
+	border-radius: 12px;
 	max-height: 120px;
-	min-height: 40px;
-	&:focus { outline: 1px solid #007acc; }
+	min-height: 48px;
+	font-family: inherit;
+	transition: all 0.2s ease;
+	
+	&:focus { 
+		outline: none; 
+		border-color: #667eea;
+		background: #ffffff;
+		box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+	}
+	
+	&::placeholder {
+		color: #9ca3af;
+	}
+`;
+
+const VoiceButton = styled.button`
+	background: ${(p) => p.$listening ? '#ef4444' : '#f3f4f6'};
+	border: 1px solid ${(p) => p.$listening ? '#dc2626' : '#d1d5db'};
+	color: ${(p) => p.$listening ? '#fff' : '#6b7280'};
+	cursor: pointer;
+	width: 48px;
+	height: 48px;
+	border-radius: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18px;
+	font-weight: 500;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+	
+	&:hover { 
+		background: ${(p) => p.$listening ? '#dc2626' : '#e5e7eb'}; 
+		color: ${(p) => p.$listening ? '#fff' : '#374151'}; 
+		transform: scale(1.05);
+		border-color: ${(p) => p.$listening ? '#b91c1c' : '#9ca3af'};
+	}
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 `;
 
 const SendButton = styled.button`
-	background: #0e639c;
-	border: 1px solid #0e639c;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	border: none;
 	color: #fff;
-	font-size: 12px;
+	font-size: 14px;
 	font-weight: 600;
-	padding: 0 16px;
-	border-radius: 4px;
+	padding: 12px 20px;
+	border-radius: 12px;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
-	&:hover { background:#1177bb; }
-	&:disabled { opacity: 0.5; cursor: default; }
+	gap: 6px;
+	transition: all 0.2s ease;
+	box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+	min-height: 48px;
+	min-width: 70px;
+	justify-content: center;
+	flex-shrink: 0;
+	
+	&:hover { 
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+	}
+	&:disabled { 
+		opacity: 0.5; 
+		cursor: not-allowed;
+		transform: none;
+		box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+	}
 `;
 
 const ResizeHandle = styled.div`
@@ -156,28 +255,33 @@ const ResizeHandle = styled.div`
 	height: 100%;
 	cursor: ew-resize;
 	background: transparent;
-	&:hover { background: rgba(255,255,255,0.06); }
+	&:hover { background: rgba(102, 126, 234, 0.2); }
 `;
 
 // Floating toggle button (bottom-right) if panel hidden
 const FloatingToggle = styled.button`
 	position: fixed;
-	bottom: 18px;
-	right: 18px;
-	z-index: 1550; /* just below panel */
-	background: #0e639c;
-	color:#fff;
+	bottom: 24px;
+	right: 24px;
+	z-index: 1550;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: #fff;
 	border: none;
-	padding: 10px 14px;
+	padding: 14px 18px;
 	border-radius: 50px;
-	font-size: 13px;
+	font-size: 14px;
 	font-weight: 600;
-	box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+	box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
 	display: flex;
 	gap: 8px;
 	align-items: center;
 	cursor: pointer;
-	&:hover { background:#1177bb; }
+	transition: all 0.3s ease;
+	
+	&:hover { 
+		transform: translateY(-2px);
+		box-shadow: 0 12px 32px rgba(102, 126, 234, 0.5);
+	}
 `;
 
 // Función para aplicar los cambios del patch al diagrama
@@ -207,7 +311,47 @@ function applyPatchToDiagram(patch) {
     // Verificar que sea un array
     if (!Array.isArray(parsedPatch)) {
       console.error('Patch no es un array válido:', parsedPatch);
-      return;
+      console.log('Tipo del patch:', typeof parsedPatch);
+      console.log('Estructura del patch:', JSON.stringify(parsedPatch, null, 2));
+      
+      // Si es un objeto, verificar si tiene una propiedad que contenga el array
+      if (typeof parsedPatch === 'object' && parsedPatch !== null) {
+        // Buscar propiedades comunes que puedan contener el array de operaciones
+        const possibleArrayProps = ['operations', 'patches', 'changes', 'data', 'result', 'actions'];
+        for (const prop of possibleArrayProps) {
+          if (parsedPatch[prop] && Array.isArray(parsedPatch[prop])) {
+            console.log(`Encontrado array en propiedad '${prop}':`, parsedPatch[prop]);
+            parsedPatch = parsedPatch[prop];
+            break;
+          }
+        }
+        
+        // Si aún no es un array, verificar si es una estructura de datos completa
+        if (!Array.isArray(parsedPatch)) {
+          // Verificar si tiene la estructura de datos completa (classes, relations)
+          if (parsedPatch.classes || parsedPatch.relations) {
+            console.log('Patch es estructura de datos completa, enviando directamente');
+            // Enviar el objeto completo como está
+            const patchEvent = new CustomEvent('ai-patch-apply', {
+              detail: { patch: parsedPatch }
+            });
+            window.dispatchEvent(patchEvent);
+            console.log('✅ Patch de estructura completa aplicado exitosamente');
+            
+            // Mostrar notificación de éxito
+            if (typeof window !== 'undefined' && window.alert) {
+              setTimeout(() => {
+                alert('✅ Diagrama actualizado exitosamente');
+              }, 100);
+            }
+            return;
+          } else {
+            // Intentar usar el objeto directamente como una operación
+            console.log('Convirtiendo objeto único a array:', parsedPatch);
+            parsedPatch = [parsedPatch];
+          }
+        }
+      }
     }
     
     // Emitir evento personalizado para que el EditorDiagrama pueda procesar los cambios
@@ -216,7 +360,14 @@ function applyPatchToDiagram(patch) {
     });
     window.dispatchEvent(patchEvent);
     
-    console.log('Patch aplicado exitosamente');
+    console.log('✅ Patch aplicado exitosamente');
+    
+    // Mostrar notificación de éxito
+    if (typeof window !== 'undefined' && window.alert) {
+      setTimeout(() => {
+        alert('✅ Diagrama actualizado exitosamente');
+      }, 100);
+    }
   } catch (error) {
     console.error('Error aplicando patch:', error);
     console.log('Patch que causó el error:', patch);
@@ -251,6 +402,9 @@ async function* streamAIResponse(prompt, diagramId, currentDiagram) {
     // Si hay cambios en el diagrama, aplicar los cambios directamente
     if (result.proposal && result.proposal.patch) {
       console.log('📦 Patch encontrado:', result.proposal.patch);
+      console.log('📦 Tipo del patch:', typeof result.proposal.patch);
+      console.log('📦 Es array?', Array.isArray(result.proposal.patch));
+      console.log('📦 Estructura completa:', JSON.stringify(result.proposal.patch, null, 2));
       // Aplicar los cambios del patch al diagrama
       applyPatchToDiagram(result.proposal.patch);
       yield "Diagrama actualizado automáticamente\n\n";
@@ -334,11 +488,14 @@ const AIAssistant = ({
 	const [messages, setMessages] = useState([
 		{ id: 'sys-hello',
 		  role: 'assistant',
-		  content: 'Hola, soy tu asistente IA. ¿En qué te ayudo con el diagrama?' }
+		  content: '¡Hola! Soy tu asistente de IA para diagramas UML. Puedo ayudarte a crear, analizar y mejorar tus diagramas. ¿En qué te puedo ayudar hoy?' }
 	]);
 	const [input, setInput] = useState('');
 	const [sending, setSending] = useState(false);
+	const [isListening, setIsListening] = useState(false);
+	const [isSendingVoice, setIsSendingVoice] = useState(false);
 	const messagesEndRef = useRef(null);
+	const recognitionRef = useRef(null);
 
 	// Auto scroll
 	useEffect(() => {
@@ -346,6 +503,51 @@ const AIAssistant = ({
 			messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
 		}
 	}, [messages, open]);
+
+	// Inicializar reconocimiento de voz
+	useEffect(() => {
+		if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+			const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+			recognitionRef.current = new SpeechRecognition();
+			
+			recognitionRef.current.continuous = false;
+			recognitionRef.current.interimResults = false;
+			recognitionRef.current.lang = 'es-ES';
+			
+			recognitionRef.current.onstart = () => {
+				setIsListening(true);
+			};
+			
+			recognitionRef.current.onresult = (event) => {
+				const transcript = event.results[0][0].transcript;
+				setInput(transcript);
+				setIsListening(false);
+				setIsSendingVoice(true);
+				
+				// Enviar automáticamente después de un breve delay
+				setTimeout(() => {
+					if (transcript.trim()) {
+						sendVoiceMessage(transcript.trim());
+					}
+				}, 500);
+			};
+			
+			recognitionRef.current.onerror = (event) => {
+				console.error('Error de reconocimiento de voz:', event.error);
+				setIsListening(false);
+			};
+			
+			recognitionRef.current.onend = () => {
+				setIsListening(false);
+			};
+		}
+		
+		return () => {
+			if (recognitionRef.current) {
+				recognitionRef.current.stop();
+			}
+		};
+	}, []);
 
 		const toggle = () => {
 			if (controlled) {
@@ -378,6 +580,67 @@ const AIAssistant = ({
 			window.removeEventListener('mouseup', up);
 		};
 	}, [handleMouseMove]);
+
+	const startVoiceRecognition = () => {
+		if (recognitionRef.current && !isListening) {
+			try {
+				recognitionRef.current.start();
+			} catch (error) {
+				console.error('Error iniciando reconocimiento de voz:', error);
+				setIsListening(false);
+			}
+		}
+	};
+
+	const stopVoiceRecognition = () => {
+		if (recognitionRef.current && isListening) {
+			recognitionRef.current.stop();
+		}
+	};
+
+	const sendVoiceMessage = async (transcript) => {
+		if (!transcript || sending) return;
+		
+		if (!diagramId) {
+			console.warn('no se proporciono diagramaId al AIAssistant');
+			return;
+		}
+
+		const userMsg = { 
+			id: Date.now() + '-u', 
+			role: 'user', 
+			content: transcript };
+
+		setMessages(m => [...m, userMsg]);
+		setInput('');
+		setSending(true);
+
+		const aiId = Date.now() + '-a';
+
+		setMessages(m => [...m, { 
+			id: aiId, 
+			role: 'assistant', 
+			content: 'Procesando...' }]);
+		
+		try {
+			let accumulated = '';
+			for await (const chunk of streamAIResponse(transcript, diagramId, currentDiagram)) {
+				accumulated += chunk;
+				setMessages(m => m.map(msg => 
+					msg.id === aiId ? { ...msg, content: accumulated } : msg));
+			}
+		} catch (err) {
+			console.error('Error en streamAIResponse:', err);
+			setMessages(m => m.map(msg =>
+				msg.id === aiId ? {
+					 ...msg, 
+					 content: 'Error al procesar la respuesta, Verifica la configuracion.'
+					 } : msg));
+		} finally {
+			setSending(false);
+			setIsSendingVoice(false);
+		}
+	};
 
 	const sendMessage = async (e) => {
 		e && e.preventDefault();
@@ -450,7 +713,7 @@ const AIAssistant = ({
 		<>
 			{!open && !hideFloatingButton && (
 				<FloatingToggle onClick={toggle} style={{ zIndex: zIndexBase - 1 }}>
-					<i className="fas fa-robot"></i> IA
+					Asistente IA
 				</FloatingToggle>
 			)}
 			<PanelWrapper ref={panelRef} $width={panelWidth} $hidden={!open} style={{ zIndex: zIndexBase }}>
@@ -458,7 +721,7 @@ const AIAssistant = ({
 				<Header>
 					<Title>Asistente IA</Title>
 					<IconButton title={sending ? 'Generando...' : 'Nueva conversación'} disabled={sending}
-						onClick={() => !sending && setMessages([{ id: 'sys-hello', role: 'assistant', content: 'Conversación reiniciada. ¿Qué necesitas ahora?' }])}>
+						onClick={() => !sending && setMessages([{ id: 'sys-hello', role: 'assistant', content: '¡Conversación reiniciada! ¿Qué necesitas ahora?' }])}>
 						↻
 					</IconButton>
 					<IconButton title="Cerrar" onClick={toggle}>
@@ -468,7 +731,7 @@ const AIAssistant = ({
 				<Messages>
 					{messages.map(msg => (
 						<Bubble key={msg.id}>
-							<BubbleAvatar $user={msg.role === 'user'}>{msg.role === 'user' ? 'Tú' : 'IA'}</BubbleAvatar>
+							<BubbleAvatar $user={msg.role === 'user'}>{msg.role === 'user' ? 'U' : 'AI'}</BubbleAvatar>
 							<BubbleContent $user={msg.role === 'user'}>{msg.content}</BubbleContent>
 						</Bubble>
 					))}
@@ -478,7 +741,11 @@ const AIAssistant = ({
 					<TextArea
 						rows={1}
 						value={input}
-						placeholder={sending ? 'Esperando respuesta...' : 'Escribe tu mensaje...'}
+						placeholder={
+							isListening ? 'Escuchando...' : 
+							isSendingVoice ? 'Enviando mensaje de voz...' :
+							'Escribe tu mensaje...'
+						}
 						onChange={(e) => setInput(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === 'Enter' && !e.shiftKey) {
@@ -487,6 +754,23 @@ const AIAssistant = ({
 							}
 						}}
 					/>
+					<VoiceButton 
+						$listening={isListening}
+						onClick={isListening ? stopVoiceRecognition : startVoiceRecognition}
+						title={isListening ? 'Detener grabación' : 'Grabar voz'}
+						disabled={sending}
+					>
+						{isListening ? (
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+								<rect x="6" y="6" width="12" height="12" rx="2"/>
+							</svg>
+						) : (
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+								<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+								<path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+							</svg>
+						)}
+					</VoiceButton>
 					<SendButton type="submit" disabled={sending || !input.trim()}>
 						{sending ? '...' : 'Enviar'}
 					</SendButton>

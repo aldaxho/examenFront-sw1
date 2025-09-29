@@ -5,6 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import AssociationRelation from '../components/AssociationRelation';
 import ClassComponent from '../components/ClassComponent';
 import AIAssistant from '../components/AIAssistant';
+import TourGuide from '../components/TourGuide';
 import io from 'socket.io-client';
 import API_CONFIG from '../services/apiConfig';
 import {
@@ -85,6 +86,8 @@ const EditorDiagrama = () => {
   const canvasContainerRef = useRef(null);
   // Viewport visible del canvas (área recortada por CanvasContainer)
   const viewportRef = useRef(null);
+  // Controla si ya se aplicó el auto-fit para evitar auto-zoom molesto
+  const hasAutoFitRef = useRef(false);
 
   // Estados principales
   const [classes, setClasses] = useState([]);
@@ -95,6 +98,21 @@ const EditorDiagrama = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [httpConnected, setHttpConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  // Normalizar y deduplicar usuarios por id/userId/socketId
+  const normalizeUsers = useCallback((users) => {
+    if (!Array.isArray(users)) return [];
+    const seen = new Set();
+    const result = [];
+    for (const u of users) {
+      // Priorizar userId; si falta, usar socketId; como último recurso, id
+      const key = u?.userId || u?.socketId || u?.id || u?.email || u?.username || u?.name;
+      if (!key) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(u);
+    }
+    return result;
+  }, []);
 
   // Estados para UI
   const [selectedClass, setSelectedClass] = useState(null);
@@ -158,7 +176,7 @@ const EditorDiagrama = () => {
 
   // Inicializar Socket.IO
   useEffect(() => {
-    socketRef.current = io(API_CONFIG.BASE_URL, {
+    socketRef.current = io(API_CONFIG.WS_URL, {
       withCredentials: true,
       transports: ['websocket', 'polling'],
     });
@@ -167,6 +185,16 @@ const EditorDiagrama = () => {
       console.log('Conectado al servidor');
       setIsConnected(true);
       socketRef.current.emit('join-room', id);
+      // Compatibilidad: algunos servidores usan 'join-diagram'
+      socketRef.current.emit('join-diagram', { roomId: id });
+      // Solicitar lista de usuarios con callback (contrato del backend)
+      socketRef.current.emit('get-online-users', id, (users) => {
+        console.log('Callback get-online-users:', users);
+        setOnlineUsers(normalizeUsers(users || []));
+      });
+      // Compatibilidad adicional (si el backend soporta otros canales)
+      socketRef.current.emit('request-users', { roomId: id });
+      socketRef.current.emit('who-is-online', { roomId: id });
     });
 
     socketRef.current.on('disconnect', () => {
@@ -176,17 +204,44 @@ const EditorDiagrama = () => {
 
     socketRef.current.on('user-joined', (user) => {
       console.log('Usuario conectado:', user);
-      setOnlineUsers(prev => [...prev, user]);
+      setOnlineUsers(prev => normalizeUsers([...(prev || []), user]));
     });
 
-    socketRef.current.on('user-left', (userId) => {
-      console.log('Usuario desconectado:', userId);
-      setOnlineUsers(prev => prev.filter(user => user.id !== userId));
+    socketRef.current.on('user-left', (payload) => {
+      // El backend puede enviar userId o socketId o un objeto
+      const leftKey = typeof payload === 'string' ? payload : (payload?.userId || payload?.socketId || payload?.id);
+      console.log('Usuario desconectado:', payload);
+      setOnlineUsers(prev => (prev || []).filter(user => {
+        const key = user?.userId || user?.socketId || user?.id;
+        return key !== leftKey;
+      }));
     });
 
     socketRef.current.on('users-updated', (users) => {
       console.log('Usuarios en línea actualizados:', users);
-      setOnlineUsers(users);
+      setOnlineUsers(normalizeUsers(users));
+    });
+
+    // Escuchar eventos alternativos de presencia si el backend los usa
+    socketRef.current.on('presence-update', (users) => {
+      console.log('Presence update:', users);
+      setOnlineUsers(normalizeUsers(users || []));
+    });
+    socketRef.current.on('online-users', (users) => {
+      console.log('Online users:', users);
+      setOnlineUsers(normalizeUsers(users || []));
+    });
+    socketRef.current.on('room-users', (users) => {
+      console.log('Room users:', users);
+      setOnlineUsers(normalizeUsers(users || []));
+    });
+    socketRef.current.on('users-in-room', (users) => {
+      console.log('Users in room:', users);
+      setOnlineUsers(normalizeUsers(users || []));
+    });
+    socketRef.current.on('participants', (users) => {
+      console.log('Participants:', users);
+      setOnlineUsers(normalizeUsers(users || []));
     });
 
     return () => {
@@ -225,22 +280,47 @@ const EditorDiagrama = () => {
     const handleAIPatchApply = (event) => {
       const { patch } = event.detail;
       console.log('Procesando patch de IA:', patch);
+      console.log('Tipo del patch:', typeof patch);
+      console.log('Es array?', Array.isArray(patch));
       
       // Verificar si es un patch de operaciones o datos directos
       if (patch.classes && patch.relations) {
         // Es la estructura directa de datos (como la de tu base de datos)
         console.log('Aplicando estructura de datos completa');
-        setClasses(patch.classes);
-        setRelations(patch.relations);
+        console.log('Clases encontradas:', patch.classes.length);
+        console.log('Relaciones encontradas:', patch.relations.length);
+        
+        // Aplicar las clases
+        if (Array.isArray(patch.classes)) {
+          setClasses(patch.classes);
+        }
+        
+        // Aplicar las relaciones
+        if (Array.isArray(patch.relations)) {
+          setRelations(patch.relations);
+        }
+        
         if (patch.titulo) {
           setTitulo(patch.titulo);
         }
+        
+        console.log('✅ Estructura de datos aplicada exitosamente');
       } else if (Array.isArray(patch)) {
         // Es un array de operaciones patch
         console.log('Aplicando patch de operaciones');
         applyAIPatch(patch);
+      } else if (typeof patch === 'object' && patch !== null) {
+        // Es un objeto único, verificar si es una operación válida
+        console.log('Procesando objeto único como operación');
+        if (patch.type) {
+          // Es una operación válida, convertir a array
+          applyAIPatch([patch]);
+        } else {
+          console.error('Objeto no tiene tipo de operación válido:', patch);
+        }
       } else {
         console.error('Formato de patch no reconocido:', patch);
+        console.log('Estructura completa:', JSON.stringify(patch, null, 2));
       }
     };
 
@@ -408,28 +488,71 @@ const EditorDiagrama = () => {
     // El sistema manual ya está funcionando correctamente
   }, [classes, relations]);
 
-  const handleWheel = (e) => {
-    if (e.ctrlKey) {
+  // Evitar el zoom del navegador (Ctrl/Meta + rueda, pinch en trackpad, atajos +/-/0, y gestos en Safari)
+  useEffect(() => {
+    const preventWheelZoom = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    };
+    const preventKeyZoom = (e) => {
+      const isPlus = e.key === '+' || e.key === '=';
+      const isMinus = e.key === '-' || e.key === '_';
+      const isZero = e.key === '0' || e.key === ')';
+      const isNumpadPlus = e.key === 'Add';
+      const isNumpadMinus = e.key === 'Subtract';
+      if ((e.ctrlKey || e.metaKey) && (isPlus || isMinus || isZero || isNumpadPlus || isNumpadMinus)) {
+        e.preventDefault();
+      }
+    };
+    const preventGesture = (e) => {
       e.preventDefault();
-      e.stopPropagation();
-      
-      // Zoom independiente del navegador
-      const delta = e.deltaY * -0.005; // Zoom más suave
+    };
+
+    // Captura temprana y bloquea en todos los navegadores
+    window.addEventListener('wheel', preventWheelZoom, { passive: false, capture: true });
+    window.addEventListener('mousewheel', preventWheelZoom, { passive: false, capture: true });
+    window.addEventListener('DOMMouseScroll', preventWheelZoom, { passive: false, capture: true });
+    window.addEventListener('keydown', preventKeyZoom, { passive: false, capture: true });
+    window.addEventListener('gesturestart', preventGesture, { passive: false, capture: true });
+    window.addEventListener('gesturechange', preventGesture, { passive: false, capture: true });
+    window.addEventListener('gestureend', preventGesture, { passive: false, capture: true });
+
+    return () => {
+      window.removeEventListener('wheel', preventWheelZoom, { passive: false, capture: true });
+      window.removeEventListener('mousewheel', preventWheelZoom, { passive: false, capture: true });
+      window.removeEventListener('DOMMouseScroll', preventWheelZoom, { passive: false, capture: true });
+      window.removeEventListener('keydown', preventKeyZoom, { passive: false, capture: true });
+      window.removeEventListener('gesturestart', preventGesture, { passive: false, capture: true });
+      window.removeEventListener('gesturechange', preventGesture, { passive: false, capture: true });
+      window.removeEventListener('gestureend', preventGesture, { passive: false, capture: true });
+    };
+  }, []);
+
+  const handleWheel = (e) => {
+    const isPinchZoom = e.ctrlKey || e.metaKey;
+
+    if (isPinchZoom) {
+      // Zoom con gesto de pinza en touchpad o Ctrl+rueda
+      const delta = e.deltaY * -0.005; // Zoom suave
       const newZoom = Math.max(0.1, Math.min(3, zoomLevel + delta));
-      
-      // Calcular el punto de zoom relativo al mouse
+
       const rect = e.currentTarget.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
-      
-      // Ajustar el offset para mantener el punto bajo el mouse
+
       const zoomFactor = newZoom / zoomLevel;
       setCanvasOffset(prev => ({
         x: mouseX - (mouseX - prev.x) * zoomFactor,
         y: mouseY - (mouseY - prev.y) * zoomFactor
       }));
-      
       setZoomLevel(newZoom);
+    } else {
+      // Desplazamiento con dos dedos: pan horizontal/vertical
+      setCanvasOffset(prev => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY
+      }));
     }
   };
 
@@ -642,18 +765,20 @@ const EditorDiagrama = () => {
     setCanvasOffset({ x: newOffsetX, y: newOffsetY });
   }, [classes]);
 
-  // Ajustar vista automáticamente solo al cargar el diagrama por primera vez
+  // Ajustar vista automáticamente solo una vez al cargar el diagrama
   useEffect(() => {
-    if (classes.length > 0 && !isLoading) {
-      // Solo centrar automáticamente si es la primera carga (no cuando se agregan clases)
-      const isFirstLoad = classes.length === 1 && classes[0].name === 'Nueva Clase';
-      if (!isFirstLoad) {
-        setTimeout(() => {
-          fitToBounds();
-        }, 500);
-      }
+    if (!isLoading && classes.length > 0 && !hasAutoFitRef.current) {
+      hasAutoFitRef.current = true;
+      setTimeout(() => {
+        fitToBounds();
+      }, 300);
     }
-  }, [isLoading, fitToBounds, classes]);
+  }, [isLoading, classes, fitToBounds]);
+
+  // Reiniciar el flag cuando cambia de diagrama
+  useEffect(() => {
+    hasAutoFitRef.current = false;
+  }, [id]);
 
 
   const handleClassUpdate = (classId, updatedData) => {
@@ -864,6 +989,7 @@ const EditorDiagrama = () => {
     setExportError(null);
     setJdlContent(null);
     setZipDownloadUrl(null);
+    setLoading(true);
     
     try {
       const response = await fetch(API_CONFIG.getUrl(`/api/openapi/generate-backend/${id}`), {
@@ -888,6 +1014,16 @@ const EditorDiagrama = () => {
         setZipDownloadUrl(zipUrl);
         setJdlContent('Archivo ZIP generado exitosamente');
         setExportError(null);
+        
+        // Descargar automáticamente el ZIP
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = `${titulo || 'diagrama'}-springboot-project.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        alert('¡Proyecto Spring Boot generado y descargado exitosamente!');
       } else if (contentType && contentType.includes('application/json')) {
         // Si es JSON, manejarlo normalmente
         const result = await response.json();
@@ -898,27 +1034,38 @@ const EditorDiagrama = () => {
           // Si el backend también devuelve un ZIP del proyecto generado
           if (result.zipUrl) {
             setZipDownloadUrl(result.zipUrl);
+            
+            // Descargar automáticamente el ZIP
+            const link = document.createElement('a');
+            link.href = result.zipUrl;
+            link.download = `${titulo || 'diagrama'}-springboot-project.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
           }
           
           setExportError(null);
+          alert('¡Proyecto Spring Boot generado exitosamente!');
       } else {
           setExportError(result.message || 'No se pudo generar el JDL.');
           setJdlContent(null);
           setZipDownloadUrl(null);
       }
-    } else {
+      } else {
         // Intentar como texto plano (podría ser JDL directo)
         const textResult = await response.text();
         setJdlContent(textResult);
         setExportError(null);
+        alert('¡JDL generado exitosamente!');
       }
     } catch (error) {
       console.error('Error generando proyecto:', error);
       setExportError('Error generando proyecto: ' + error.message);
       setJdlContent(null);
       setZipDownloadUrl(null);
+      alert('Error al generar el proyecto: ' + error.message);
     } finally {
-      // Loading completed
+      setLoading(false);
     }
   };
 
@@ -1781,7 +1928,12 @@ const exportarXMI = () => {
       const resp = await axios.get(API_CONFIG.getUrl(`/api/invitations/${id}/users`), {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setUsuarios(resp.data || []);
+      const lista = resp.data || [];
+      setUsuarios(lista);
+      // También sincronizar el contador visual de usuarios en línea si el backend devuelve presencia
+      if (Array.isArray(lista)) {
+        setOnlineUsers(lista);
+      }
     } catch (err) {
       console.error('Error obteniendo usuarios del diagrama:', err?.response?.data || err.message);
     }
@@ -1791,22 +1943,26 @@ const exportarXMI = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
-      console.log('Buscando código de invitación existente...');
-      const resp = await axios.get(API_CONFIG.getUrl(`/api/invitations/${id}/code`), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      // Intentar distintas claves posibles que pueda devolver el backend
-      const codigo = resp.data?.codigo || resp.data?.code || resp.data?.codigoInvitacion || resp.data?.invitationCode;
-      console.log('Respuesta del servidor:', resp.data);
-      console.log('Código encontrado:', codigo);
-      if (codigo) {
-        setCodigoInvitacion(codigo);
-        console.log('Código de invitación cargado:', codigo);
-      } else {
-        console.log('No se encontró código de invitación existente');
+      
+      // 1) Intentar recuperar desde localStorage (guardado al generarlo)
+      const localKey = `invitationCode:${id}`;
+      const stored = localStorage.getItem(localKey);
+      if (stored) {
+        setCodigoInvitacion(stored);
+        console.log('Código de invitación recuperado de localStorage:', stored);
+        return;
       }
+
+      // 2) Si no hay en localStorage, no llamamos al endpoint por ID de diagrama
+      // porque el backend expone GET /api/invitations/code/{codigoInvitacion} (no por diagramId)
+      console.log('No hay código en localStorage. Omite petición por diagramId para evitar 404.');
     } catch (err) {
-      console.error('Error obteniendo código de invitación:', err?.response?.data || err.message);
+      // Solo mostrar error si no es un 404 (endpoint no existe)
+      if (err?.response?.status !== 404) {
+        console.error('Error obteniendo código de invitación:', err?.response?.data || err.message);
+      } else {
+        console.log('Endpoint de código de invitación no disponible - esto es normal');
+      }
       // No mostrar error al usuario si no hay código existente
     }
   }, [id]);
@@ -1819,7 +1975,9 @@ const exportarXMI = () => {
         return;
       }
       console.log('Generando nuevo código de invitación...');
-      const resp = await axios.post(API_CONFIG.getUrl(`/api/invitations/${id}/invitations`), {}, {
+      const resp = await axios.post(API_CONFIG.getUrl(`/api/invitations/generate`), {
+        diagramId: id
+      }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // Intentar distintas claves posibles que pueda devolver el backend
@@ -1828,6 +1986,10 @@ const exportarXMI = () => {
       console.log('Nuevo código generado:', nuevoCodigo);
       if (nuevoCodigo) {
         setCodigoInvitacion(nuevoCodigo);
+        // Guardar para próximas cargas (el backend no expone GET por diagramId)
+        try {
+          localStorage.setItem(`invitationCode:${id}`, nuevoCodigo);
+        } catch {}
         console.log('Código de invitación actualizado:', nuevoCodigo);
       } else {
         console.warn('Respuesta inesperada al generar código de invitación:', resp.data);
@@ -1835,7 +1997,17 @@ const exportarXMI = () => {
       }
     } catch (err) {
       console.error('Error generando código de invitación:', err?.response?.data || err.message);
-      alert('No se pudo generar el código de invitación.');
+      
+      // Manejar diferentes tipos de errores
+      if (err?.response?.status === 404) {
+        alert('El endpoint de invitaciones no está disponible en el backend.');
+      } else if (err?.response?.status === 401) {
+        alert('No tienes permisos para generar códigos de invitación.');
+      } else if (err?.response?.status === 500) {
+        alert('Error interno del servidor al generar código de invitación.');
+      } else {
+        alert('No se pudo generar el código de invitación. Verifica la conexión.');
+      }
     }
   };
 
@@ -1859,11 +2031,10 @@ const exportarXMI = () => {
     }
   };
 
-  // Cargar usuarios y código de invitación al montar / cambiar id
+  // Cargar solo código de invitación al montar / cambiar id (presencia va por sockets)
   useEffect(() => {
-    fetchUsuarios();
     fetchCodigoInvitacion();
-  }, [id, fetchUsuarios, fetchCodigoInvitacion]);
+  }, [id, fetchCodigoInvitacion]);
 
   // Funciones adicionales del editor limpio
   const abrirModalTitulo = () => {
@@ -2019,6 +2190,7 @@ const exportarXMI = () => {
             <Edit size={16} />
             Editar título
           </Button>
+          <TourGuide isVisible={true} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Button onClick={volverAInicio} $variant="secondary">
@@ -2034,7 +2206,7 @@ const exportarXMI = () => {
 
       <ToolbarContainer>
         <ToolbarGroup>
-            <Button $variant="primary" onClick={() => {
+            <Button $variant="primary" id="agregar-clase" onClick={() => {
               clearClassSelection();
               agregarClase();
             }}>
@@ -2043,7 +2215,7 @@ const exportarXMI = () => {
           </Button>
           {!isCreatingRelation && (
             <>
-              <Button $variant="secondary" onClick={() => { 
+              <Button $variant="secondary" id="crear-asociacion" onClick={() => { 
                 clearClassSelection();
                 setRelationType('Asociación'); 
                 setIsCreatingRelation(true); 
@@ -2051,7 +2223,7 @@ const exportarXMI = () => {
                 <Link size={16} />
                 Crear Asociación
           </Button>
-              <Button $variant="secondary" onClick={() => { 
+              <Button $variant="secondary" id="crear-composicion" onClick={() => { 
                 clearClassSelection();
                 setRelationType('Composición'); 
                 setIsCreatingRelation(true); 
@@ -2059,7 +2231,7 @@ const exportarXMI = () => {
                 <CircleDot size={16} />
                 Crear Composición
             </Button>
-            <Button $variant="secondary" onClick={() => { 
+            <Button $variant="secondary" id="crear-agregacion" onClick={() => { 
                 clearClassSelection();
                 setRelationType('Agregacion'); 
                 setIsCreatingRelation(true); 
@@ -2067,7 +2239,7 @@ const exportarXMI = () => {
                 <Circle size={16} />
                 Crear Agregación
             </Button>
-            <Button $variant="secondary" onClick={() => { 
+            <Button $variant="secondary" id="crear-generalizacion" onClick={() => { 
                 clearClassSelection();
                 setRelationType('Generalización'); 
                 setIsCreatingRelation(true); 
@@ -2075,7 +2247,7 @@ const exportarXMI = () => {
                 <ArrowUp size={16} />
                 Crear Generalización
             </Button>
-            <Button $variant="secondary" onClick={() => { 
+            <Button $variant="secondary" id="crear-muchos-muchos" onClick={() => { 
                 clearClassSelection();
                 setRelationType('Muchos a Muchos'); 
                 setIsCreatingRelation(true); 
@@ -2157,11 +2329,11 @@ const exportarXMI = () => {
         </ToolbarGroup>
 
         <ToolbarGroup>
-          <Button $variant="primary" onClick={() => setIsModalOpen(true)}>
+          <Button $variant="primary" id="exportar-backend" onClick={generateSpringBootProject}>
             <Code size={16} />
             Exportar a Backend
           </Button>
-            <Button $variant="secondary" onClick={exportarXMI}>
+            <Button $variant="secondary" id="exportar-xmi" onClick={exportarXMI}>
             <FileDown size={16} />
             Exportar a XMI
             </Button>
@@ -2179,7 +2351,7 @@ const exportarXMI = () => {
               style={{ display: 'none' }} 
             />
           </label>
-          <Button $variant="primary" onClick={() => {
+          <Button $variant="primary" id="mostrar-ia" onClick={() => {
             console.log('Toggle AI Chat desde toolbar:', !chatAIVisible);
             setChatAIVisible(!chatAIVisible);
           }}>
@@ -2187,7 +2359,7 @@ const exportarXMI = () => {
             {chatAIVisible ? 'Ocultar IA' : 'Mostrar IA'}
             </Button>
           {!codigoInvitacion && (
-            <Button $variant="success" onClick={generarCodigoInvitacion}>
+            <Button $variant="success" id="generar-codigo-invitacion" onClick={generarCodigoInvitacion}>
               <Key size={16} />
               Generar Código Invitación
             </Button>
@@ -2239,7 +2411,7 @@ const exportarXMI = () => {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Button onClick={() => {
+            <Button id="centrar-vista" onClick={() => {
               fitToBounds();
             }} $variant="primary">
               <RefreshCw size={16} />

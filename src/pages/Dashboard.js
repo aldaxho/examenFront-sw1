@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import DiagramaTituloModal from '../components/DiagramaTituloModal'; // Importar el modal
-import { Plus, LogOut, UserPlus, FolderOpen, FileText, Calendar, User } from 'lucide-react';
+import { Plus, LogOut, UserPlus, FolderOpen, FileText, Calendar, User, Trash2 } from 'lucide-react';
 import API_CONFIG from '../services/apiConfig';
 
 // Estilos usando styled-components
@@ -327,6 +327,18 @@ const DiagramMeta = styled.div`
   margin-top: 12px;
 `;
 
+const InlineActions = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+`;
+
+const SmallDangerButton = styled(DangerButton)`
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  border-radius: 10px;
+`;
+
 const DiagramInfo = styled.div`
   display: flex;
   align-items: center;
@@ -475,6 +487,10 @@ const Dashboard = () => {
   const [errorPropios, setErrorPropios] = useState(null);
   const [errorInvitados, setErrorInvitados] = useState(null);
   const [mensajeAceptacion, setMensajeAceptacion] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   const obtenerDiagramas = async () => {
@@ -523,6 +539,43 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error al crear el diagrama:', error);
     }
+  };
+
+  const solicitarEliminacion = (diagrama) => {
+    setDeleteTarget(diagrama);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleting(true);
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('Sesión no válida. Inicia sesión nuevamente.');
+      }
+      await axios.delete(API_CONFIG.getUrl(`/api/diagramas/${deleteTarget.id}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDiagramas((prev) => prev.filter((d) => String(d.id) !== String(deleteTarget.id)));
+      setShowDeleteConfirm(false);
+      setShowDeleteSuccess(true);
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error('Error al eliminar el diagrama:', error);
+      const msg = error?.response?.data?.message || error?.message || 'No se pudo eliminar el diagrama.';
+      // Mostrar error en un modal simple
+      setShowDeleteConfirm(false);
+      setDeleteTarget(null);
+      window.setTimeout(() => alert(msg), 0);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const cancelarEliminacion = () => {
+    setShowDeleteConfirm(false);
+    setDeleteTarget(null);
   };
 
   const obtenerDiagramasInvitado = async () => {
@@ -663,6 +716,17 @@ const Dashboard = () => {
                   Diagrama UML
                 </DiagramInfo>
               </DiagramMeta>
+              <InlineActions>
+                <SmallDangerButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    solicitarEliminacion(diagrama);
+                  }}
+                >
+                  <Trash2 size={16} style={{ marginRight: '8px' }} />
+                  Eliminar
+                </SmallDangerButton>
+              </InlineActions>
             </DiagramItem>
           ))}
         </DiagramList>
@@ -725,6 +789,59 @@ const Dashboard = () => {
           onClose={() => setMostrarModal(false)}
           onSave={guardarTitulo}
         />
+
+      {/* Modal confirmar eliminación */}
+      {showDeleteConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000
+        }} onClick={cancelarEliminacion}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: '#0f172a', color: 'white', borderRadius: 16, padding: 24,
+            width: '100%', maxWidth: 420, border: '1px solid rgba(255,255,255,0.08)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>Confirmar eliminación</h3>
+            <p style={{ marginTop: 0, opacity: 0.85 }}>
+              ¿Seguro que deseas eliminar "{deleteTarget?.titulo}"? Esta acción no se puede deshacer.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={cancelarEliminacion} style={{
+                padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: 'rgba(255,255,255,0.12)', color: 'white', fontWeight: 600
+              }}>Cancelar</button>
+              <button onClick={confirmarEliminacion} disabled={deleting} style={{
+                padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', fontWeight: 700,
+                opacity: deleting ? 0.7 : 1
+              }}>{deleting ? 'Eliminando...' : 'Eliminar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal éxito eliminación */}
+      {showDeleteSuccess && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000
+        }} onClick={() => setShowDeleteSuccess(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: '#0f172a', color: 'white', borderRadius: 16, padding: 24,
+            width: '100%', maxWidth: 420, border: '1px solid rgba(255,255,255,0.08)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>Eliminado</h3>
+            <p style={{ marginTop: 0, opacity: 0.85 }}>
+              El diagrama fue eliminado correctamente.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => setShowDeleteSuccess(false)} style={{
+                padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontWeight: 700
+              }}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
       </Overlay>
     </Container>
   );
