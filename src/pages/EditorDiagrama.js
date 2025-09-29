@@ -375,11 +375,10 @@ const EditorDiagrama = () => {
       socket.removeAllListeners();
       window.removeEventListener('ai-patch-apply', handleAIPatchApply);
     };
-  }, [id]);
+  }, [id, normalizeUsers]);
 
   // Cargar diagrama
-  useEffect(() => {
-    const cargarDiagrama = async () => {
+  const cargarDiagrama = useCallback(async () => {
       try {
         const token = localStorage.getItem('token');
         const response = await axios.get(API_CONFIG.getUrl(`/api/diagramas/${id}`), {
@@ -421,10 +420,11 @@ const EditorDiagrama = () => {
         setError('Error al cargar el diagrama. Verifica tu conexión.');
         setLoading(false);
       }
-    };
+    }, [id, sanitizeClassesPositions]);
 
+  useEffect(() => {
     cargarDiagrama();
-  }, [id, sanitizeClassesPositions]);
+  }, [cargarDiagrama]);
 
   // Mouse move effect for relations con mejor cálculo de posición
   useEffect(() => {

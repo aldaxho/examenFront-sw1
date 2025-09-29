@@ -336,12 +336,12 @@ function applyPatchToDiagram(patch) {
               detail: { patch: parsedPatch }
             });
             window.dispatchEvent(patchEvent);
-            console.log('✅ Patch de estructura completa aplicado exitosamente');
+            console.log(' Patch de estructura completa aplicado exitosamente');
             
             // Mostrar notificación de éxito
             if (typeof window !== 'undefined' && window.alert) {
               setTimeout(() => {
-                alert('✅ Diagrama actualizado exitosamente');
+                alert('Diagrama actualizado exitosamente');
               }, 100);
             }
             return;
@@ -360,12 +360,12 @@ function applyPatchToDiagram(patch) {
     });
     window.dispatchEvent(patchEvent);
     
-    console.log('✅ Patch aplicado exitosamente');
+    console.log(' Patch aplicado exitosamente');
     
     // Mostrar notificación de éxito
     if (typeof window !== 'undefined' && window.alert) {
       setTimeout(() => {
-        alert('✅ Diagrama actualizado exitosamente');
+        alert(' Diagrama actualizado exitosamente');
       }, 100);
     }
   } catch (error) {
@@ -496,9 +496,10 @@ const AIAssistant = ({
 	const [isSendingVoice, setIsSendingVoice] = useState(false);
 	const messagesEndRef = useRef(null);
 	const recognitionRef = useRef(null);
+	const sendVoiceMessageRef = useRef(null);
 
 	// Auto scroll
-	useEffect(() => {
+    useEffect(() => {
 		if (messagesEndRef.current) {
 			messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
 		}
@@ -518,18 +519,18 @@ const AIAssistant = ({
 				setIsListening(true);
 			};
 			
-			recognitionRef.current.onresult = (event) => {
+				recognitionRef.current.onresult = (event) => {
 				const transcript = event.results[0][0].transcript;
 				setInput(transcript);
 				setIsListening(false);
 				setIsSendingVoice(true);
 				
 				// Enviar automáticamente después de un breve delay
-				setTimeout(() => {
-					if (transcript.trim()) {
-						sendVoiceMessage(transcript.trim());
+                setTimeout(() => {
+					if (transcript.trim() && sendVoiceMessageRef.current) {
+						sendVoiceMessageRef.current(transcript.trim());
 					}
-				}, 500);
+                }, 500);
 			};
 			
 			recognitionRef.current.onerror = (event) => {
@@ -598,7 +599,13 @@ const AIAssistant = ({
 		}
 	};
 
-	const sendVoiceMessage = async (transcript) => {
+    const updateAccumulatedMessage = useCallback((aiId, content) => {
+        setMessages(prev => prev.map(msg =>
+            msg.id === aiId ? { ...msg, content } : msg
+        ));
+    }, []);
+
+	const sendVoiceMessage = useCallback(async (transcript) => {
 		if (!transcript || sending) return;
 		
 		if (!diagramId) {
@@ -622,13 +629,12 @@ const AIAssistant = ({
 			role: 'assistant', 
 			content: 'Procesando...' }]);
 		
-		try {
-			let accumulated = '';
-			for await (const chunk of streamAIResponse(transcript, diagramId, currentDiagram)) {
-				accumulated += chunk;
-				setMessages(m => m.map(msg => 
-					msg.id === aiId ? { ...msg, content: accumulated } : msg));
-			}
+        try {
+            let accumulated = '';
+            for await (const chunk of streamAIResponse(transcript, diagramId, currentDiagram)) {
+                accumulated += chunk;
+                updateAccumulatedMessage(aiId, accumulated);
+            }
 		} catch (err) {
 			console.error('Error en streamAIResponse:', err);
 			setMessages(m => m.map(msg =>
@@ -640,9 +646,20 @@ const AIAssistant = ({
 			setSending(false);
 			setIsSendingVoice(false);
 		}
-	};
+	}, [sending, diagramId, currentDiagram, updateAccumulatedMessage]);
 
-	const sendMessage = async (e) => {
+	// Mantener referencia estable para el reconocimiento de voz
+	useEffect(() => {
+		sendVoiceMessageRef.current = sendVoiceMessage;
+	}, [sendVoiceMessage]);
+
+    const updateAccumulatedMessageText = useCallback((aiId, content) => {
+        setMessages(prev => prev.map(msg =>
+            msg.id === aiId ? { ...msg, content } : msg
+        ));
+    }, []);
+
+    const sendMessage = async (e) => {
 		e && e.preventDefault();
 		if (!input.trim() || sending) return;
 		
@@ -667,13 +684,12 @@ const AIAssistant = ({
 			role: 'assistant', 
 			content: 'Procesando...' }]);
 		
-		try {
-			let accumulated = '';
-			for await (const chunk of streamAIResponse(userMsg.content, diagramId, currentDiagram)) {
-				accumulated += chunk;
-				setMessages(m => m.map(msg => 
-					msg.id === aiId ? { ...msg, content: accumulated } : msg));
-			}
+        try {
+            let accumulated = '';
+            for await (const chunk of streamAIResponse(userMsg.content, diagramId, currentDiagram)) {
+                accumulated += chunk;
+                updateAccumulatedMessageText(aiId, accumulated);
+            }
 		} catch (err) {
 			console.error('Error en streamAIResponse:', err);
 			setMessages(m => m.map(msg =>

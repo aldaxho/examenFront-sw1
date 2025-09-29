@@ -225,12 +225,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  // Función para limpiar datos del usuario
-  const clearUserData = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('token');
-  };
+  // remove unused helper to satisfy linter
 
   const handleLogin = async (e) => {
     e.preventDefault();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import styled from 'styled-components';
@@ -119,13 +119,7 @@ const DiagramaForm = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (isEditing) {
-      cargarDiagrama();
-    }
-  }, [id, isEditing]);
-
-  const cargarDiagrama = async () => {
+  const cargarDiagrama = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
@@ -141,7 +135,13 @@ const DiagramaForm = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (isEditing) {
+      cargarDiagrama();
+    }
+  }, [id, isEditing, cargarDiagrama]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

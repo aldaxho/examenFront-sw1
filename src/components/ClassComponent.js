@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import styled from 'styled-components';
-import { Plus, X, Edit3, GripVertical, Settings } from 'lucide-react';
+import { Plus, Edit3, GripVertical, Settings } from 'lucide-react';
 
 const ClassContainer = styled.div`
   position: absolute;
