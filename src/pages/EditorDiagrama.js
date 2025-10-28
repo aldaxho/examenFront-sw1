@@ -1069,6 +1069,170 @@ const EditorDiagrama = () => {
     }
   };
 
+  // Función para generar proyecto Flutter
+  const generateFlutterProject = async () => {
+    const token = localStorage.getItem('token');
+    setExportError(null);
+    setJdlContent(null);
+    setZipDownloadUrl(null);
+    setLoading(true);
+    
+    try {
+      const response = await fetch(API_CONFIG.getUrl(`/api/openapi/generate-flutter/${id}`), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+      }
+      
+      // Verificar el tipo de contenido de la respuesta
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/zip')) {
+        // Si es un ZIP, manejarlo como blob
+        const blob = await response.blob();
+        const zipUrl = window.URL.createObjectURL(blob);
+        setZipDownloadUrl(zipUrl);
+        setJdlContent('Proyecto Flutter generado exitosamente');
+        setExportError(null);
+        
+        // Descargar automáticamente el ZIP
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = `${titulo || 'diagrama'}-flutter-project.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        alert('¡Proyecto Flutter generado y descargado exitosamente!');
+      } else if (contentType && contentType.includes('application/json')) {
+        // Si es JSON, manejarlo normalmente
+        const result = await response.json();
+        
+        if (result.success) {
+          setJdlContent('Proyecto Flutter generado exitosamente');
+          
+          if (result.zipUrl) {
+            setZipDownloadUrl(result.zipUrl);
+            
+            // Descargar automáticamente el ZIP
+            const link = document.createElement('a');
+            link.href = result.zipUrl;
+            link.download = `${titulo || 'diagrama'}-flutter-project.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          
+          setExportError(null);
+          alert('¡Proyecto Flutter generado exitosamente!');
+        } else {
+          setExportError(result.message || 'No se pudo generar el proyecto Flutter.');
+          setJdlContent(null);
+          setZipDownloadUrl(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error generando proyecto Flutter:', error);
+      setExportError('Error generando proyecto Flutter: ' + error.message);
+      setJdlContent(null);
+      setZipDownloadUrl(null);
+      alert('Error al generar el proyecto Flutter: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para generar proyecto Full-Stack (Backend + Frontend)
+  const generateFullStackProject = async () => {
+    const token = localStorage.getItem('token');
+    setExportError(null);
+    setJdlContent(null);
+    setZipDownloadUrl(null);
+    setLoading(true);
+    
+    try {
+      // Puedes solicitar el puerto del backend al usuario (opcional)
+      const backendPort = prompt('Ingresa el puerto del backend (por defecto 8080):', '8080') || '8080';
+      
+      const response = await fetch(API_CONFIG.getUrl(`/api/openapi/generate-fullstack/${id}`), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          backendPort: parseInt(backendPort)
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+      }
+      
+      // Verificar el tipo de contenido de la respuesta
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/zip')) {
+        // Si es un ZIP, manejarlo como blob
+        const blob = await response.blob();
+        const zipUrl = window.URL.createObjectURL(blob);
+        setZipDownloadUrl(zipUrl);
+        setJdlContent('Proyecto Full-Stack generado exitosamente (Backend Spring Boot + Frontend Flutter)');
+        setExportError(null);
+        
+        // Descargar automáticamente el ZIP
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = `${titulo || 'diagrama'}-fullstack-project.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        alert('¡Proyecto Full-Stack generado y descargado exitosamente!\n\nIncluye:\n- Backend Spring Boot\n- Frontend Flutter\n- Scripts de ejecución');
+      } else if (contentType && contentType.includes('application/json')) {
+        // Si es JSON, manejarlo normalmente
+        const result = await response.json();
+        
+        if (result.success) {
+          setJdlContent('Proyecto Full-Stack generado exitosamente');
+          
+          if (result.zipUrl) {
+            setZipDownloadUrl(result.zipUrl);
+            
+            // Descargar automáticamente el ZIP
+            const link = document.createElement('a');
+            link.href = result.zipUrl;
+            link.download = `${titulo || 'diagrama'}-fullstack-project.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          
+          setExportError(null);
+          alert('¡Proyecto Full-Stack generado exitosamente!');
+        } else {
+          setExportError(result.message || 'No se pudo generar el proyecto Full-Stack.');
+          setJdlContent(null);
+          setZipDownloadUrl(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error generando proyecto Full-Stack:', error);
+      setExportError('Error generando proyecto Full-Stack: ' + error.message);
+      setJdlContent(null);
+      setZipDownloadUrl(null);
+      alert('Error al generar el proyecto Full-Stack: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Función para descargar el JDL
   const downloadJDL = () => {
     if (!jdlContent) return;
@@ -2331,11 +2495,22 @@ const exportarXMI = () => {
         <ToolbarGroup>
           <Button $variant="primary" id="exportar-backend" onClick={generateSpringBootProject}>
             <Code size={16} />
-            Exportar a Backend
+            Exportar Backend
+          </Button>
+          <Button $variant="success" id="exportar-flutter" onClick={generateFlutterProject}>
+            <FileDown size={16} />
+            Exportar Flutter
+          </Button>
+          <Button $variant="primary" id="exportar-fullstack" onClick={generateFullStackProject} style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            fontWeight: '600'
+          }}>
+            <Code size={16} />
+            Exportar Full-Stack
           </Button>
             <Button $variant="secondary" id="exportar-xmi" onClick={exportarXMI}>
             <FileDown size={16} />
-            Exportar a XMI
+            Exportar XMI
             </Button>
           <Button $variant="secondary" onClick={() => downloadJSON({ titulo, classes, relations })}>
             <Download size={16} />
