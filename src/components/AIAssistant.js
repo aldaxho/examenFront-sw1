@@ -287,90 +287,89 @@ const FloatingToggle = styled.button`
 // Función para aplicar los cambios del patch al diagrama
 function applyPatchToDiagram(patch) {
   try {
-    console.log('Aplicando patch al diagrama:', patch);
-    
+    console.log('[AIAssistant] Aplicando patch al diagrama:', patch);
+
     // Verificar que patch sea válido
     if (!patch) {
-      console.error('Patch es null o undefined');
+      console.error('[AIAssistant] Patch es null o undefined');
       return;
     }
-    
+
     // Si patch es un string, intentar parsearlo
     let parsedPatch = patch;
     if (typeof patch === 'string') {
       try {
         parsedPatch = JSON.parse(patch);
-        console.log('Patch parseado desde string:', parsedPatch);
+        console.log('[AIAssistant] Patch parseado desde string:', parsedPatch);
       } catch (parseError) {
-        console.error('Error parseando patch JSON:', parseError);
-        console.log('Patch original:', patch);
+        console.error('[AIAssistant] Error parseando patch JSON:', parseError);
+        console.log('[AIAssistant] Patch original:', patch);
         return;
       }
     }
-    
-    // Verificar que sea un array
-    if (!Array.isArray(parsedPatch)) {
-      console.error('Patch no es un array válido:', parsedPatch);
-      console.log('Tipo del patch:', typeof parsedPatch);
-      console.log('Estructura del patch:', JSON.stringify(parsedPatch, null, 2));
-      
-      // Si es un objeto, verificar si tiene una propiedad que contenga el array
-      if (typeof parsedPatch === 'object' && parsedPatch !== null) {
-        // Buscar propiedades comunes que puedan contener el array de operaciones
-        const possibleArrayProps = ['operations', 'patches', 'changes', 'data', 'result', 'actions'];
-        for (const prop of possibleArrayProps) {
-          if (parsedPatch[prop] && Array.isArray(parsedPatch[prop])) {
-            console.log(`Encontrado array en propiedad '${prop}':`, parsedPatch[prop]);
-            parsedPatch = parsedPatch[prop];
-            break;
-          }
-        }
-        
-        // Si aún no es un array, verificar si es una estructura de datos completa
-        if (!Array.isArray(parsedPatch)) {
-          // Verificar si tiene la estructura de datos completa (classes, relations)
-          if (parsedPatch.classes || parsedPatch.relations) {
-            console.log('Patch es estructura de datos completa, enviando directamente');
-            // Enviar el objeto completo como está
-            const patchEvent = new CustomEvent('ai-patch-apply', {
-              detail: { patch: parsedPatch }
-            });
-            window.dispatchEvent(patchEvent);
-            console.log(' Patch de estructura completa aplicado exitosamente');
-            
-            // Mostrar notificación de éxito
-            if (typeof window !== 'undefined' && window.alert) {
-              setTimeout(() => {
-                alert('Diagrama actualizado exitosamente');
-              }, 100);
-            }
-            return;
-          } else {
-            // Intentar usar el objeto directamente como una operación
-            console.log('Convirtiendo objeto único a array:', parsedPatch);
-            parsedPatch = [parsedPatch];
-          }
+
+    // Verificar qué tipo de datos tenemos
+    if (typeof parsedPatch === 'object' && parsedPatch !== null) {
+      // Opción 1: Es un objeto con structure completa (classes, relations)
+      if ((parsedPatch.classes !== undefined || parsedPatch.relations !== undefined) && !Array.isArray(parsedPatch)) {
+        console.log('[AIAssistant] ✓ Patch es estructura de datos completa');
+        console.log('[AIAssistant]   classes:', parsedPatch.classes?.length || 0, 'items');
+        console.log('[AIAssistant]   relations:', parsedPatch.relations?.length || 0, 'items');
+
+        // Emitir directamente el objeto como patch
+        const patchEvent = new CustomEvent('ai-patch-apply', {
+          detail: { patch: parsedPatch }
+        });
+        window.dispatchEvent(patchEvent);
+        console.log('[AIAssistant] ✓ Patch de estructura completa emitido exitosamente');
+        return;
+      }
+
+      // Opción 2: Es un array de operaciones
+      if (Array.isArray(parsedPatch)) {
+        console.log('[AIAssistant] ✓ Patch es array de operaciones:', parsedPatch.length, 'items');
+        const patchEvent = new CustomEvent('ai-patch-apply', {
+          detail: { patch: parsedPatch }
+        });
+        window.dispatchEvent(patchEvent);
+        console.log('[AIAssistant] ✓ Patch de operaciones emitido exitosamente');
+        return;
+      }
+
+      // Opción 3: Buscar propiedades que contengan arrays
+      const possibleArrayProps = ['operations', 'patches', 'changes', 'data', 'result', 'actions'];
+      for (const prop of possibleArrayProps) {
+        if (parsedPatch[prop] && Array.isArray(parsedPatch[prop])) {
+          console.log('[AIAssistant] ✓ Array encontrado en propiedad', prop + ':', parsedPatch[prop].length, 'items');
+          const patchEvent = new CustomEvent('ai-patch-apply', {
+            detail: { patch: parsedPatch[prop] }
+          });
+          window.dispatchEvent(patchEvent);
+          console.log('[AIAssistant] ✓ Patch emitido exitosamente');
+          return;
         }
       }
+
+      // Opción 4: Si es un objeto único válido, convertir a array
+      if (parsedPatch.type || (parsedPatch.name && (parsedPatch.attributes || parsedPatch.methods)) || (parsedPatch.source && parsedPatch.target)) {
+        console.log('[AIAssistant] ✓ Objeto único válido detectado, convirtiendo a array');
+        const patchEvent = new CustomEvent('ai-patch-apply', {
+          detail: { patch: [parsedPatch] }
+        });
+        window.dispatchEvent(patchEvent);
+        console.log('[AIAssistant] ✓ Patch emitido exitosamente');
+        return;
+      }
     }
-    
-    // Emitir evento personalizado para que el EditorDiagrama pueda procesar los cambios
-    const patchEvent = new CustomEvent('ai-patch-apply', {
-      detail: { patch: parsedPatch }
-    });
-    window.dispatchEvent(patchEvent);
-    
-    console.log(' Patch aplicado exitosamente');
-    
-    // Mostrar notificación de éxito
-    if (typeof window !== 'undefined' && window.alert) {
-      setTimeout(() => {
-        alert(' Diagrama actualizado exitosamente');
-      }, 100);
-    }
+
+    console.error('[AIAssistant] ✗ No se pudo determinar el formato del patch');
+    console.log('[AIAssistant] Tipo:', typeof parsedPatch);
+    console.log('[AIAssistant] Es array?', Array.isArray(parsedPatch));
+    console.log('[AIAssistant] Estructura:', JSON.stringify(parsedPatch, null, 2));
+
   } catch (error) {
-    console.error('Error aplicando patch:', error);
-    console.log('Patch que causó el error:', patch);
+    console.error('[AIAssistant] ✗ Error aplicando patch:', error);
+    console.log('[AIAssistant] Patch que causó el error:', patch);
   }
 }
 
@@ -394,23 +393,137 @@ async function* streamAIResponse(prompt, diagramId, currentDiagram) {
       throw new Error(`Error HTTP: ${response.status}`);
     }
 
-    const result = await response.json();
-    
-    // Debug: Mostrar la respuesta completa del backend
-    console.log('Respuesta completa del backend:', result);
-    
-    // Si hay cambios en el diagrama, aplicar los cambios directamente
-    if (result.proposal && result.proposal.patch) {
-      console.log('📦 Patch encontrado:', result.proposal.patch);
-      console.log('📦 Tipo del patch:', typeof result.proposal.patch);
-      console.log('📦 Es array?', Array.isArray(result.proposal.patch));
-      console.log('📦 Estructura completa:', JSON.stringify(result.proposal.patch, null, 2));
-      // Aplicar los cambios del patch al diagrama
-      applyPatchToDiagram(result.proposal.patch);
-      yield "Diagrama actualizado automáticamente\n\n";
-    } else {
-      console.log('⚠️ No se encontró patch en la respuesta');
-    }
+		const result = await response.json();
+
+		// Debug: Mostrar la respuesta completa del backend
+		console.log('Respuesta completa del backend:', result);
+
+		// Helper: intenta extraer JSON desde un string (quita fences y busca primer {..} o [..])
+		const extractJsonFromString = (text) => {
+			if (!text || typeof text !== 'string') return null;
+			// Quitar fences ```json ``` o ``` ```
+			const noFences = text.replace(/```(?:json)?\n?/gi, '').replace(/```/g, '');
+			// Buscar primer { o [ y el último } o ]
+			const firstBrace = noFences.indexOf('{');
+			const firstBracket = noFences.indexOf('[');
+			let start = -1; let end = -1;
+			if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+				start = firstBrace;
+				end = noFences.lastIndexOf('}');
+			} else if (firstBracket !== -1) {
+				start = firstBracket;
+				end = noFences.lastIndexOf(']');
+			}
+			if (start === -1 || end === -1 || end <= start) return null;
+			const candidate = noFences.substring(start, end + 1).trim();
+			try {
+				return JSON.parse(candidate);
+			} catch (e) {
+				// intentar un segundo intento reemplazando comillas escapadas
+				try {
+					const unescaped = candidate.replace(/\\"/g, '"');
+					return JSON.parse(unescaped);
+				} catch (err) {
+					console.warn('No se pudo parsear JSON candidato:', err);
+					return null;
+				}
+			}
+		};
+
+		// Helper: buscar y aplicar patch en varias ubicaciones frecuentes del response
+		const tryApplyPatchFromResult = (res) => {
+			try {
+				// 1) propuesta explícita - PERO validar que no esté vacía
+				if (res.proposal && res.proposal.patch) {
+					const patch = res.proposal.patch;
+					// Check if patch has actual data (not just empty arrays)
+					const hasClasses = Array.isArray(patch.classes) && patch.classes.length > 0;
+					const hasRelations = Array.isArray(patch.relations) && patch.relations.length > 0;
+					const hasData = hasClasses || hasRelations;
+
+					if (hasData) {
+						console.log('✓ Patch válido encontrado en proposal.patch:', patch);
+						applyPatchToDiagram(patch);
+						return true;
+					} else {
+						// Patch vacío - intentar con updatedDiagram como fallback
+						console.log('⚠ Patch encontrado pero está vacío (classes:', patch.classes?.length || 0, 'relations:', patch.relations?.length || 0 + ')');
+						if (res.updatedDiagram) {
+							console.log('→ Intentando usar updatedDiagram como fallback');
+							applyPatchToDiagram(res.updatedDiagram);
+							return true;
+						}
+					}
+				}
+
+				// 1b) Fallback directo a updatedDiagram si proposal.patch no existe
+				if (res.updatedDiagram && !res.proposal?.patch) {
+					console.log('✓ Usando updatedDiagram directamente (no hay proposal.patch)');
+					applyPatchToDiagram(res.updatedDiagram);
+					return true;
+				}
+
+				// 2) analysis.summary puede contener JSON
+				if (res.analysis && typeof res.analysis.summary === 'string') {
+					const parsed = extractJsonFromString(res.analysis.summary);
+					if (parsed) {
+						console.log('✓ JSON encontrado en analysis.summary');
+						applyPatchToDiagram(parsed);
+						return true;
+					}
+				}
+
+				// 3) messages puede contener JSON en texto
+				if (res.messages && Array.isArray(res.messages)) {
+					for (const m of res.messages) {
+						const text = typeof m === 'string' ? m : (m?.content || '');
+						const parsed = extractJsonFromString(text);
+						if (parsed) {
+							console.log('✓ JSON encontrado en messages');
+							applyPatchToDiagram(parsed);
+							return true;
+						}
+					}
+				}
+
+				// 4) campos comunes: text, content, result
+				for (const key of ['text','content','result','data']) {
+					if (res[key] && typeof res[key] === 'string') {
+						const parsed = extractJsonFromString(res[key]);
+						if (parsed) {
+							console.log('✓ JSON encontrado en campo:', key);
+							applyPatchToDiagram(parsed);
+							return true;
+						}
+					}
+				}
+
+				return false;
+			} catch (err) {
+				console.error('Error intentando aplicar patch desde result:', err);
+				return false;
+			}
+		};
+
+			const applied = tryApplyPatchFromResult(result);
+			if (applied) {
+				yield "Diagrama actualizado automáticamente\n\n";
+			} else {
+				console.log('⚠️ No se encontró patch en la respuesta');
+				try {
+					// Guardar la respuesta completa para debugging local (puedes recuperarla con localStorage.getItem('ai:lastFailedResponse'))
+					if (typeof window !== 'undefined' && window.localStorage) {
+						try {
+							window.localStorage.setItem('ai:lastFailedResponse', JSON.stringify(result));
+							console.warn('Respuesta AI guardada en localStorage bajo la clave ai:lastFailedResponse');
+						} catch (e) {
+							console.warn('No se pudo guardar la respuesta en localStorage:', e);
+						}
+					}
+				} catch (e) {
+					/* noop */
+				}
+			}
 
     // Procesar la respuesta del agente
     if (result.analysis && result.analysis.summary) {
@@ -479,8 +592,12 @@ const AIAssistant = ({
 }) => {
 	const controlled = typeof isOpen === 'boolean';
 	const [open, setOpen] = useState(controlled ? isOpen : initialOpen);
-	// Sync when controlled prop changes
-	useEffect(() => { if (controlled) setOpen(isOpen); }, [isOpen, controlled]);
+	// Sync when controlled prop changes (only when controlled mode is active)
+	useEffect(() => {
+		if (controlled && isOpen !== open) {
+			setOpen(isOpen);
+		}
+	}, [isOpen, controlled, open]);
 	const [panelWidth, setPanelWidth] = useState(width);
 	const [resizing, setResizing] = useState(false);
 	const panelRef = useRef(null);
@@ -563,24 +680,32 @@ const AIAssistant = ({
 			}
 		};
 
-	const handleMouseMove = useCallback((e) => {
-		if (resizing) {
-			const newWidth = Math.min(700, Math.max(300, window.innerWidth - e.clientX));
-			setPanelWidth(newWidth);
-		}
+	// Resize handler with stable reference using ref to avoid infinite loops
+	const resizingRef = useRef(false);
+	useEffect(() => {
+		resizingRef.current = resizing;
 	}, [resizing]);
 
 	useEffect(() => {
-		function up() {
+		const handleMouseMove = (e) => {
+			if (resizingRef.current) {
+				const newWidth = Math.min(700, Math.max(300, window.innerWidth - e.clientX));
+				setPanelWidth(newWidth);
+			}
+		};
+
+		const handleMouseUp = () => {
 			setResizing(false);
-		}
+		};
+
 		window.addEventListener('mousemove', handleMouseMove);
-		window.addEventListener('mouseup', up);
+		window.addEventListener('mouseup', handleMouseUp);
+
 		return () => {
 			window.removeEventListener('mousemove', handleMouseMove);
-			window.removeEventListener('mouseup', up);
+			window.removeEventListener('mouseup', handleMouseUp);
 		};
-	}, [handleMouseMove]);
+	}, []);
 
 	const startVoiceRecognition = () => {
 		if (recognitionRef.current && !isListening) {
@@ -599,23 +724,25 @@ const AIAssistant = ({
 		}
 	};
 
+    // Update message content by ID (stable callback to avoid infinite loops)
     const updateAccumulatedMessage = useCallback((aiId, content) => {
         setMessages(prev => prev.map(msg =>
             msg.id === aiId ? { ...msg, content } : msg
         ));
     }, []);
 
+	// Send message (voice or text) - use minimal dependencies
 	const sendVoiceMessage = useCallback(async (transcript) => {
 		if (!transcript || sending) return;
-		
+
 		if (!diagramId) {
 			console.warn('no se proporciono diagramaId al AIAssistant');
 			return;
 		}
 
-		const userMsg = { 
-			id: Date.now() + '-u', 
-			role: 'user', 
+		const userMsg = {
+			id: Date.now() + '-u',
+			role: 'user',
 			content: transcript };
 
 		setMessages(m => [...m, userMsg]);
@@ -624,11 +751,11 @@ const AIAssistant = ({
 
 		const aiId = Date.now() + '-a';
 
-		setMessages(m => [...m, { 
-			id: aiId, 
-			role: 'assistant', 
+		setMessages(m => [...m, {
+			id: aiId,
+			role: 'assistant',
 			content: 'Procesando...' }]);
-		
+
         try {
             let accumulated = '';
             for await (const chunk of streamAIResponse(transcript, diagramId, currentDiagram)) {
@@ -639,7 +766,7 @@ const AIAssistant = ({
 			console.error('Error en streamAIResponse:', err);
 			setMessages(m => m.map(msg =>
 				msg.id === aiId ? {
-					 ...msg, 
+					 ...msg,
 					 content: 'Error al procesar la respuesta, Verifica la configuracion.'
 					 } : msg));
 		} finally {
@@ -653,24 +780,18 @@ const AIAssistant = ({
 		sendVoiceMessageRef.current = sendVoiceMessage;
 	}, [sendVoiceMessage]);
 
-    const updateAccumulatedMessageText = useCallback((aiId, content) => {
-        setMessages(prev => prev.map(msg =>
-            msg.id === aiId ? { ...msg, content } : msg
-        ));
-    }, []);
-
-    const sendMessage = async (e) => {
+    const sendMessage = useCallback(async (e) => {
 		e && e.preventDefault();
 		if (!input.trim() || sending) return;
-		
+
 		if (!diagramId) {
 			console.warn('no se proporciono diagramaId al AIAssistant');
 			return;
 		}
 
-		const userMsg = { 
-			id: Date.now() + '-u', 
-			role: 'user', 
+		const userMsg = {
+			id: Date.now() + '-u',
+			role: 'user',
 			content: input.trim() };
 
 		setMessages(m => [...m, userMsg]);
@@ -679,28 +800,28 @@ const AIAssistant = ({
 
 		const aiId = Date.now() + '-a';
 
-		setMessages(m => [...m, { 
-			id: aiId, 
-			role: 'assistant', 
+		setMessages(m => [...m, {
+			id: aiId,
+			role: 'assistant',
 			content: 'Procesando...' }]);
-		
+
         try {
             let accumulated = '';
             for await (const chunk of streamAIResponse(userMsg.content, diagramId, currentDiagram)) {
                 accumulated += chunk;
-                updateAccumulatedMessageText(aiId, accumulated);
+                updateAccumulatedMessage(aiId, accumulated);
             }
 		} catch (err) {
 			console.error('Error en streamAIResponse:', err);
 			setMessages(m => m.map(msg =>
 				msg.id === aiId ? {
-					 ...msg, 
+					 ...msg,
 					 content: 'Error al procesar la respuesta, Verifica la configuracion.'
 					 } : msg));
 		} finally {
 			setSending(false);
 		}
-	};
+	}, [input, sending, diagramId, currentDiagram, updateAccumulatedMessage]);
 
 
 	 // Listener para actualizaciones del diagrama desde Socket.IO

@@ -222,6 +222,7 @@ const AssociationRelation = ({
   relation,
   onUpdate,
   onDelete,
+  allClasses = [], // Todas las clases para detectar colisiones
 }) => {
   const [isSelected, setIsSelected] = useState(false);
   const [editModeOrigen, setEditModeOrigen] = useState(false);
@@ -311,55 +312,78 @@ const AssociationRelation = ({
     const nx = deltaX / distance;
     const ny = deltaY / distance;
 
-    // Función para encontrar el punto de intersección con el borde de un rectángulo
+    // Función para encontrar el punto de intersección EXACTO con el borde de un rectángulo
     const findIntersectionPoint = (centerX, centerY, dirX, dirY, width, height) => {
+      // Calcular las coordenadas exactas de los bordes del rectángulo
+      const leftEdge = centerX - width / 2;
+      const rightEdge = centerX + width / 2;
+      const topEdge = centerY - height / 2;
+      const bottomEdge = centerY + height / 2;
+      
       // Calcular intersecciones con cada borde
       const intersections = [];
       
-      // Borde izquierdo (x = centerX - width/2)
-      const tLeft = (centerX - width/2 - centerX) / dirX;
-      if (tLeft > 0) {
-        const y = centerY + dirY * tLeft;
-        if (y >= centerY - height/2 && y <= centerY + height/2) {
-          intersections.push({ x: centerX - width/2, y, t: tLeft });
+      // Borde izquierdo (x = leftEdge)
+      if (dirX !== 0) {
+        const tLeft = (leftEdge - centerX) / dirX;
+        if (tLeft > 0) {
+          const y = centerY + dirY * tLeft;
+          if (y >= topEdge && y <= bottomEdge) {
+            intersections.push({ x: leftEdge, y, t: tLeft });
+          }
         }
       }
       
-      // Borde derecho (x = centerX + width/2)
-      const tRight = (centerX + width/2 - centerX) / dirX;
-      if (tRight > 0) {
-        const y = centerY + dirY * tRight;
-        if (y >= centerY - height/2 && y <= centerY + height/2) {
-          intersections.push({ x: centerX + width/2, y, t: tRight });
+      // Borde derecho (x = rightEdge)
+      if (dirX !== 0) {
+        const tRight = (rightEdge - centerX) / dirX;
+        if (tRight > 0) {
+          const y = centerY + dirY * tRight;
+          if (y >= topEdge && y <= bottomEdge) {
+            intersections.push({ x: rightEdge, y, t: tRight });
+          }
         }
       }
       
-      // Borde superior (y = centerY - height/2)
-      const tTop = (centerY - height/2 - centerY) / dirY;
-      if (tTop > 0) {
-        const x = centerX + dirX * tTop;
-        if (x >= centerX - width/2 && x <= centerX + width/2) {
-          intersections.push({ x, y: centerY - height/2, t: tTop });
+      // Borde superior (y = topEdge)
+      if (dirY !== 0) {
+        const tTop = (topEdge - centerY) / dirY;
+        if (tTop > 0) {
+          const x = centerX + dirX * tTop;
+          if (x >= leftEdge && x <= rightEdge) {
+            intersections.push({ x, y: topEdge, t: tTop });
+          }
         }
       }
       
-      // Borde inferior (y = centerY + height/2)
-      const tBottom = (centerY + height/2 - centerY) / dirY;
-      if (tBottom > 0) {
-        const x = centerX + dirX * tBottom;
-        if (x >= centerX - width/2 && x <= centerX + width/2) {
-          intersections.push({ x, y: centerY + height/2, t: tBottom });
+      // Borde inferior (y = bottomEdge)
+      if (dirY !== 0) {
+        const tBottom = (bottomEdge - centerY) / dirY;
+        if (tBottom > 0) {
+          const x = centerX + dirX * tBottom;
+          if (x >= leftEdge && x <= rightEdge) {
+            intersections.push({ x, y: bottomEdge, t: tBottom });
+          }
         }
       }
       
       // Retornar la intersección más cercana (menor t)
       if (intersections.length > 0) {
         const closest = intersections.reduce((min, current) => current.t < min.t ? current : min);
-        return { x: closest.x, y: closest.y };
+        // Asegurar que el punto esté EXACTAMENTE en el borde (redondear para evitar errores de punto flotante)
+        return { 
+          x: Math.round(closest.x * 100) / 100, 
+          y: Math.round(closest.y * 100) / 100 
+        };
       }
       
-      // Fallback
-      return { x: centerX, y: centerY };
+      // Fallback - si no hay intersección, usar el borde más cercano
+      // Esto no debería pasar, pero por seguridad
+      if (Math.abs(dirX) > Math.abs(dirY)) {
+        return { x: dirX > 0 ? rightEdge : leftEdge, y: centerY };
+      } else {
+        return { x: centerX, y: dirY > 0 ? bottomEdge : topEdge };
+      }
     };
 
     // Encontrar punto de salida en la clase origen
@@ -378,30 +402,183 @@ const AssociationRelation = ({
 
   const { startX, startY, endX, endY } = calculateLineCoordinates();
 
-  // Función para generar línea rectangular
-  const generateRectangularPath = (startX, startY, endX, endY) => {
+  // Función para generar línea ortogonal inteligente que evita cruces
+  // IMPORTANTE: startX/startY y endX/endY ya están en los bordes exactos de las clases
+  const generateOrthogonalPath = (startX, startY, endX, endY) => {
+    const CLASS_WIDTH = 300;
+    const CLASS_HEIGHT = 150;
+    const ROUTE_OFFSET = 30; // Offset mínimo desde el borde para routing ortogonal
+
+    // Obtener las clases que no son origen ni destino (obstáculos)
+    const obstacles = allClasses.filter(
+      cls => cls.id !== sourceClass.id && cls.id !== targetClass.id
+    );
+
+    // Verificar si un punto está dentro o muy cerca de una clase
+    const pointInClass = (x, y, cls) => {
+      const margin = 5; // Margen muy pequeño
+      return (
+        x > cls.x - margin &&
+        x < cls.x + CLASS_WIDTH + margin &&
+        y > cls.y - margin &&
+        y < cls.y + CLASS_HEIGHT + margin
+      );
+    };
+
+    // Verificar si una línea cruza una clase (interior)
+    const lineCrossesClass = (x1, y1, x2, y2, cls) => {
+      const clsLeft = cls.x;
+      const clsRight = cls.x + CLASS_WIDTH;
+      const clsTop = cls.y;
+      const clsBottom = cls.y + CLASS_HEIGHT;
+      
+      // Si alguno de los puntos está dentro, no cruza (está en el borde)
+      if (pointInClass(x1, y1, cls) || pointInClass(x2, y2, cls)) {
+        // Verificar si está en el borde (OK) o dentro (problema)
+        const onBorder1 = 
+          (Math.abs(x1 - clsLeft) < 2 || Math.abs(x1 - clsRight) < 2) ||
+          (Math.abs(y1 - clsTop) < 2 || Math.abs(y1 - clsBottom) < 2);
+        const onBorder2 = 
+          (Math.abs(x2 - clsLeft) < 2 || Math.abs(x2 - clsRight) < 2) ||
+          (Math.abs(y2 - clsTop) < 2 || Math.abs(y2 - clsBottom) < 2);
+        
+        if (!onBorder1 || !onBorder2) {
+          // Uno de los puntos está dentro, no en el borde
+          return true;
+        }
+      }
+      
+      // Verificar intersección del segmento con el interior del rectángulo
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      
+      // Caja delimitadora rápida
+      if (maxX < clsLeft || minX > clsRight || maxY < clsTop || minY > clsBottom) {
+        return false;
+      }
+      
+      // Verificar intersección real con el interior (no bordes)
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      if (dx === 0 && dy === 0) return false;
+      
+      // Para cada borde, verificar si cruza el interior
+      if (dx !== 0) {
+        const tLeft = (clsLeft - x1) / dx;
+        const tRight = (clsRight - x1) / dx;
+        if (tLeft >= 0 && tLeft <= 1) {
+          const y = y1 + dy * tLeft;
+          if (y > clsTop && y < clsBottom) return true;
+        }
+        if (tRight >= 0 && tRight <= 1) {
+          const y = y1 + dy * tRight;
+          if (y > clsTop && y < clsBottom) return true;
+        }
+      }
+      
+      if (dy !== 0) {
+        const tTop = (clsTop - y1) / dy;
+        const tBottom = (clsBottom - y1) / dy;
+        if (tTop >= 0 && tTop <= 1) {
+          const x = x1 + dx * tTop;
+          if (x > clsLeft && x < clsRight) return true;
+        }
+        if (tBottom >= 0 && tBottom <= 1) {
+          const x = x1 + dx * tBottom;
+          if (x > clsLeft && x < clsRight) return true;
+        }
+      }
+      
+      return false;
+    };
+
+    // Usar los puntos exactos del borde (sin modificarlos)
+    // Solo agregar un pequeño offset ortogonal si es necesario para routing
     const dx = endX - startX;
     const dy = endY - startY;
     
-    // Calcular el punto medio
-    const midX = (startX + endX) / 2;
-    const midY = (startY + endY) / 2;
+    // Determinar en qué borde está cada punto
+    const sourceLeft = sourceClass.x;
+    const sourceRight = sourceClass.x + CLASS_WIDTH;
+    const sourceTop = sourceClass.y;
+    const sourceBottom = sourceClass.y + CLASS_HEIGHT;
     
-    // Calcular el ancho del rectángulo (20% de la distancia)
-    const rectWidth = Math.max(Math.abs(dx) * 0.2, 20);
-    const rectHeight = Math.max(Math.abs(dy) * 0.2, 20);
+    const targetLeft = targetClass.x;
+    const targetRight = targetClass.x + CLASS_WIDTH;
+    const targetTop = targetClass.y;
+    const targetBottom = targetClass.y + CLASS_HEIGHT;
     
-    // Crear un rectángulo en el medio de la línea
-    const rectX = midX - rectWidth / 2;
-    const rectY = midY - rectHeight / 2;
+    // Detectar en qué borde está cada punto
+    const startOnLeft = Math.abs(startX - sourceLeft) < 2;
+    const startOnRight = Math.abs(startX - sourceRight) < 2;
+    const startOnTop = Math.abs(startY - sourceTop) < 2;
+    const startOnBottom = Math.abs(startY - sourceBottom) < 2;
     
-    // Crear path rectangular que conecte los puntos
-    return `M ${startX} ${startY} 
-            L ${rectX} ${startY} 
-            L ${rectX} ${rectY} 
-            L ${rectX + rectWidth} ${rectY} 
-            L ${rectX + rectWidth} ${endY} 
-            L ${endX} ${endY}`;
+    const endOnLeft = Math.abs(endX - targetLeft) < 2;
+    const endOnRight = Math.abs(endX - targetRight) < 2;
+    const endOnTop = Math.abs(endY - targetTop) < 2;
+    const endOnBottom = Math.abs(endY - targetBottom) < 2;
+    
+    // Verificar si hay obstáculos en el camino directo
+    const needsReroute = obstacles.length > 0 && obstacles.some(obs => 
+      lineCrossesClass(startX, startY, endX, endY, obs)
+    );
+
+    // Si no hay obstáculos y la línea es relativamente directa, usar línea recta
+    if (!needsReroute && (Math.abs(dx) < 50 || Math.abs(dy) < 50)) {
+      return `M ${startX} ${startY} L ${endX} ${endY}`;
+    }
+    
+    // Si hay obstáculos o la línea es muy diagonal, usar routing ortogonal
+    // Calcular puntos de routing ortogonal desde los bordes
+    let routeStartX = startX;
+    let routeStartY = startY;
+    let routeEndX = endX;
+    let routeEndY = endY;
+    
+    // Mover el punto de inicio ligeramente fuera del borde
+    if (startOnLeft) {
+      routeStartX = startX - ROUTE_OFFSET;
+    } else if (startOnRight) {
+      routeStartX = startX + ROUTE_OFFSET;
+    } else if (startOnTop) {
+      routeStartY = startY - ROUTE_OFFSET;
+    } else if (startOnBottom) {
+      routeStartY = startY + ROUTE_OFFSET;
+    }
+    
+    // Mover el punto final ligeramente fuera del borde
+    if (endOnLeft) {
+      routeEndX = endX - ROUTE_OFFSET;
+    } else if (endOnRight) {
+      routeEndX = endX + ROUTE_OFFSET;
+    } else if (endOnTop) {
+      routeEndY = endY - ROUTE_OFFSET;
+    } else if (endOnBottom) {
+      routeEndY = endY + ROUTE_OFFSET;
+    }
+    
+    // Si es principalmente horizontal, routing horizontal-vertical-horizontal
+    if (Math.abs(dx) > Math.abs(dy)) {
+      const midY = (routeStartY + routeEndY) / 2;
+      return `M ${startX} ${startY} 
+              L ${routeStartX} ${startY} 
+              L ${routeStartX} ${midY} 
+              L ${routeEndX} ${midY} 
+              L ${routeEndX} ${endY} 
+              L ${endX} ${endY}`;
+    } else {
+      // Si es principalmente vertical, routing vertical-horizontal-vertical
+      const midX = (routeStartX + routeEndX) / 2;
+      return `M ${startX} ${startY} 
+              L ${startX} ${routeStartY} 
+              L ${midX} ${routeStartY} 
+              L ${midX} ${routeEndY} 
+              L ${endX} ${routeEndY} 
+              L ${endX} ${endY}`;
+    }
   };
 
   return (
@@ -499,19 +676,51 @@ const AssociationRelation = ({
         $isSelected={isSelected}
       >
         <RelationPath
-          d={generateRectangularPath(startX, startY, endX, endY)}
+          d={generateOrthogonalPath(startX, startY, endX, endY)}
           fill="none"
           {...getRelationStyle(relation.type)}
           filter="url(#shadowFilter)"
           className="relation-path"
         />
         
-        {/* Nombre de la relación */}
-        <g transform={`translate(${(startX + endX) / 2}, ${(startY + endY) / 2})`}>
-          <RelationText>
-            {relation.type}
-          </RelationText>
-        </g>
+        {/* Nombre de la relación - posicionamiento mejorado */}
+        {(() => {
+          // Calcular posición óptima para la etiqueta
+          const midX = (startX + endX) / 2;
+          const midY = (startY + endY) / 2;
+          const dx = endX - startX;
+          const dy = endY - startY;
+          
+          // Offset para evitar solapamiento con la línea
+          const labelOffset = 25;
+          let labelX = midX;
+          let labelY = midY;
+          
+          // Si la línea es principalmente horizontal, desplazar verticalmente
+          if (Math.abs(dx) > Math.abs(dy)) {
+            labelY -= labelOffset * (dy > 0 ? 1 : -1);
+          } else {
+            // Si es principalmente vertical, desplazar horizontalmente
+            labelX += labelOffset * (dx > 0 ? -1 : 1);
+          }
+          
+          return (
+            <g transform={`translate(${labelX}, ${labelY})`}>
+              {/* Fondo semi-transparente para mejor legibilidad */}
+              <rect
+                x="-50"
+                y="-12"
+                width="100"
+                height="24"
+                fill="rgba(0, 0, 0, 0.6)"
+                rx="4"
+              />
+              <RelationText>
+                {relation.type}
+              </RelationText>
+            </g>
+          );
+        })()}
 
         {/* Panel de control */}
         {showControls && (
@@ -539,41 +748,171 @@ const AssociationRelation = ({
         )}
 
         {/* Etiquetas de cardinalidad - posicionamiento mejorado */}
-        <g transform={`translate(${startX - 25}, ${startY - 10})`}>
-          {editModeOrigen ? (
-            <RelationInput width="50" height="24">
-              <input
-                value={tempOrigen}
-                onChange={(e) => setTempOrigen(e.target.value)}
-                onBlur={handleSaveOrigen}
-                onKeyPress={(e) => e.key === 'Enter' && handleSaveOrigen()}
-                autoFocus
-              />
-            </RelationInput>
-          ) : (
-            <RelationLabel onDoubleClick={() => setEditModeOrigen(true)}>
-              {relation.multiplicidadOrigen}
-            </RelationLabel>
-          )}
-        </g>
+        {(() => {
+          const CLASS_WIDTH = 300;
+          const CLASS_HEIGHT = 150;
+          const LABEL_OFFSET = 25; // Offset desde el borde de la clase
+          const LINE_OFFSET = 15; // Offset adicional perpendicular a la línea para evitar superposición
+          
+          // Calcular dirección de la línea
+          const lineDx = endX - startX;
+          const lineDy = endY - startY;
+          const lineLength = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
+          
+          // Vector perpendicular a la línea (normalizado) para desplazar cardinalidades
+          let perpX = 0;
+          let perpY = 0;
+          if (lineLength > 0) {
+            // Vector perpendicular: rotar 90 grados (intercambiar x/y y negar uno)
+            perpX = -lineDy / lineLength;
+            perpY = lineDx / lineLength;
+          }
+          
+          // Determinar en qué borde está el punto de salida (origen)
+          const sourceLeft = sourceClass.x;
+          const sourceRight = sourceClass.x + CLASS_WIDTH;
+          const sourceTop = sourceClass.y;
+          const sourceBottom = sourceClass.y + CLASS_HEIGHT;
+          
+          const startOnLeft = Math.abs(startX - sourceLeft) < 2;
+          const startOnRight = Math.abs(startX - sourceRight) < 2;
+          const startOnTop = Math.abs(startY - sourceTop) < 2;
+          const startOnBottom = Math.abs(startY - sourceBottom) < 2;
+          
+          // Posicionar cardinalidad origen - FUERA del borde Y perpendicular a la línea
+          let origenX = startX;
+          let origenY = startY;
+          
+          // Primero, posicionar respecto al borde de la clase
+          if (startOnLeft) {
+            origenX = sourceLeft - LABEL_OFFSET;
+            origenY = startY;
+          } else if (startOnRight) {
+            origenX = sourceRight + LABEL_OFFSET;
+            origenY = startY;
+          } else if (startOnTop) {
+            origenX = startX;
+            origenY = sourceTop - LABEL_OFFSET;
+          } else if (startOnBottom) {
+            origenX = startX;
+            origenY = sourceBottom + LABEL_OFFSET;
+          }
+          
+          // Luego, desplazar perpendicularmente a la línea para evitar superposición
+          // Determinar la mejor dirección (alejarse del centro de la línea)
+          const midX = (startX + endX) / 2;
+          const midY = (startY + endY) / 2;
+          const distToMidX = origenX - midX;
+          const distToMidY = origenY - midY;
+          
+          // Usar el vector perpendicular que aleje del centro
+          const dotProduct = distToMidX * perpX + distToMidY * perpY;
+          const perpDirX = dotProduct > 0 ? perpX : -perpX;
+          const perpDirY = dotProduct > 0 ? perpY : -perpY;
+          
+          origenX += perpDirX * LINE_OFFSET;
+          origenY += perpDirY * LINE_OFFSET;
+          
+          // Determinar en qué borde está el punto final (destino)
+          const targetLeft = targetClass.x;
+          const targetRight = targetClass.x + CLASS_WIDTH;
+          const targetTop = targetClass.y;
+          const targetBottom = targetClass.y + CLASS_HEIGHT;
+          
+          const endOnLeft = Math.abs(endX - targetLeft) < 2;
+          const endOnRight = Math.abs(endX - targetRight) < 2;
+          const endOnTop = Math.abs(endY - targetTop) < 2;
+          const endOnBottom = Math.abs(endY - targetBottom) < 2;
+          
+          // Posicionar cardinalidad destino - FUERA del borde Y perpendicular a la línea
+          let destinoX = endX;
+          let destinoY = endY;
+          
+          // Primero, posicionar respecto al borde de la clase
+          if (endOnLeft) {
+            destinoX = targetLeft - LABEL_OFFSET;
+            destinoY = endY;
+          } else if (endOnRight) {
+            destinoX = targetRight + LABEL_OFFSET;
+            destinoY = endY;
+          } else if (endOnTop) {
+            destinoX = endX;
+            destinoY = targetTop - LABEL_OFFSET;
+          } else if (endOnBottom) {
+            destinoX = endX;
+            destinoY = targetBottom + LABEL_OFFSET;
+          }
+          
+          // Luego, desplazar perpendicularmente a la línea
+          const distToMidX2 = destinoX - midX;
+          const distToMidY2 = destinoY - midY;
+          const dotProduct2 = distToMidX2 * perpX + distToMidY2 * perpY;
+          const perpDirX2 = dotProduct2 > 0 ? perpX : -perpX;
+          const perpDirY2 = dotProduct2 > 0 ? perpY : -perpY;
+          
+          destinoX += perpDirX2 * LINE_OFFSET;
+          destinoY += perpDirY2 * LINE_OFFSET;
+          
+          return (
+            <>
+              {/* Cardinalidad origen */}
+              <g transform={`translate(${origenX}, ${origenY})`}>
+                {/* Fondo para legibilidad */}
+                <rect
+                  x="-20"
+                  y="-10"
+                  width="40"
+                  height="20"
+                  fill="rgba(0, 0, 0, 0.6)"
+                  rx="4"
+                />
+                {editModeOrigen ? (
+                  <RelationInput width="50" height="24">
+                    <input
+                      value={tempOrigen}
+                      onChange={(e) => setTempOrigen(e.target.value)}
+                      onBlur={handleSaveOrigen}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSaveOrigen()}
+                      autoFocus
+                    />
+                  </RelationInput>
+                ) : (
+                  <RelationLabel onDoubleClick={() => setEditModeOrigen(true)}>
+                    {relation.multiplicidadOrigen}
+                  </RelationLabel>
+                )}
+              </g>
 
-        <g transform={`translate(${endX - 25}, ${endY - 10})`}>
-          {editModeDestino ? (
-            <RelationInput width="50" height="24">
-              <input
-                value={tempDestino}
-                onChange={(e) => setTempDestino(e.target.value)}
-                onBlur={handleSaveDestino}
-                onKeyPress={(e) => e.key === 'Enter' && handleSaveDestino()}
-                autoFocus
-              />
-            </RelationInput>
-          ) : (
-            <RelationLabel onDoubleClick={() => setEditModeDestino(true)}>
-              {relation.multiplicidadDestino}
-            </RelationLabel>
-          )}
-        </g>
+              {/* Cardinalidad destino */}
+              <g transform={`translate(${destinoX}, ${destinoY})`}>
+                {/* Fondo para legibilidad */}
+                <rect
+                  x="-20"
+                  y="-10"
+                  width="40"
+                  height="20"
+                  fill="rgba(0, 0, 0, 0.6)"
+                  rx="4"
+                />
+                {editModeDestino ? (
+                  <RelationInput width="50" height="24">
+                    <input
+                      value={tempDestino}
+                      onChange={(e) => setTempDestino(e.target.value)}
+                      onBlur={handleSaveDestino}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSaveDestino()}
+                      autoFocus
+                    />
+                  </RelationInput>
+                ) : (
+                  <RelationLabel onDoubleClick={() => setEditModeDestino(true)}>
+                    {relation.multiplicidadDestino}
+                  </RelationLabel>
+                )}
+              </g>
+            </>
+          );
+        })()}
 
         {/* Botón de eliminar */}
         <foreignObject

@@ -328,14 +328,24 @@ const ClassComponent = ({
       const handleMouseUp = (e) => {
         e.preventDefault();
         setIsDragging(false);
+        
+        // Aplicar snap-to-grid cuando se suelta
+        const GRID_SIZE = 50; // Tamaño del grid para snap
+        
         // Forzar una última actualización pendiente si existe
         if (rafIdRef.current) {
           cancelAnimationFrame(rafIdRef.current);
           rafIdRef.current = null;
         }
+        
         if (pendingPosRef.current && onPositionChange) {
-          onPositionChange(pendingPosRef.current);
+          // Aplicar snap-to-grid
+          const snappedX = Math.round(pendingPosRef.current.x / GRID_SIZE) * GRID_SIZE;
+          const snappedY = Math.round(pendingPosRef.current.y / GRID_SIZE) * GRID_SIZE;
+          
+          onPositionChange({ x: snappedX, y: snappedY });
         }
+        
         pendingPosRef.current = null;
         
         document.removeEventListener('mousemove', handleMouseMove);

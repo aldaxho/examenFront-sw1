@@ -303,18 +303,63 @@ const EditorDiagrama = () => {
         if (patch.titulo) {
           setTitulo(patch.titulo);
         }
-        
+
         console.log('✅ Estructura de datos aplicada exitosamente');
+
+        // Auto-save: si el patch trae contenido útil, guardarlo directamente en el backend
+        try {
+          const hasContent = (Array.isArray(patch.classes) && patch.classes.length > 0) || (Array.isArray(patch.relations) && patch.relations.length > 0);
+          if (hasContent) {
+            // Guardar usando el contenido del patch (evitamos depender de setState asincrónico)
+            const token = localStorage.getItem('token');
+            if (token) {
+              const payload = {
+                titulo: patch.titulo || titulo,
+                contenido: {
+                  classes: patch.classes,
+                  relations: patch.relations
+                }
+              };
+              axios.put(API_CONFIG.getUrl(`/api/diagramas/${id}`), payload, {
+                headers: { Authorization: `Bearer ${token}` }
+              }).then(() => {
+                console.log('Auto-save: Diagrama guardado automáticamente después de aplicar patch de IA');
+              }).catch((e) => {
+                console.warn('Auto-save failed:', e?.response?.data || e.message || e);
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Error en auto-save tras aplicar patch estructural:', e);
+        }
       } else if (Array.isArray(patch)) {
         // Es un array de operaciones patch
         console.log('Aplicando patch de operaciones');
         applyAIPatch(patch);
+        // Para patches operacionales, esperar un momento para que los setState dentro de applyAIPatch
+        // se apliquen y luego guardar el diagrama completo
+        setTimeout(() => {
+          try {
+            guardarDiagrama();
+            console.log('Auto-save: Diagrama guardado automáticamente tras patch de operaciones');
+          } catch (e) {
+            console.warn('Error auto-guardando después de patch de operaciones:', e);
+          }
+        }, 600);
       } else if (typeof patch === 'object' && patch !== null) {
         // Es un objeto único, verificar si es una operación válida
         console.log('Procesando objeto único como operación');
         if (patch.type) {
           // Es una operación válida, convertir a array
           applyAIPatch([patch]);
+          setTimeout(() => {
+            try {
+              guardarDiagrama();
+              console.log('Auto-save: Diagrama guardado automáticamente tras operación única de IA');
+            } catch (e) {
+              console.warn('Error auto-guardando después de operación única:', e);
+            }
+          }, 600);
         } else {
           console.error('Objeto no tiene tipo de operación válido:', patch);
         }
@@ -765,6 +810,7 @@ const EditorDiagrama = () => {
     setCanvasOffset({ x: newOffsetX, y: newOffsetY });
   }, [classes]);
 
+
   // Ajustar vista automáticamente solo una vez al cargar el diagrama
   useEffect(() => {
     if (!isLoading && classes.length > 0 && !hasAutoFitRef.current) {
@@ -793,9 +839,152 @@ const EditorDiagrama = () => {
         roomId: id,
       classId,
         data: updatedData
-    });
+      });
     }
   };
+
+  // Función de auto-organización inteligente usando algoritmo force-directed simplificado
+  const autoOrganizeClasses = useCallback(() => {
+    if (classes.length === 0) return;
+
+    const CLASS_WIDTH = 300;
+    const CLASS_HEIGHT = 150;
+    const MIN_SPACING = 350; // Espaciado mínimo entre clases
+    const GRID_SIZE = 100; // Tamaño del grid para snap
+    
+    // Crear un mapa de relaciones para agrupar clases relacionadas
+    const relatedGroups = new Map();
+    const classGroups = new Map();
+    let groupId = 0;
+
+    // Agrupar clases por relaciones
+    relations.forEach(rel => {
+      const sourceId = rel.source;
+      const targetId = rel.target;
+      
+      const sourceGroup = classGroups.get(sourceId);
+      const targetGroup = classGroups.get(targetId);
+      
+      if (!sourceGroup && !targetGroup) {
+        // Crear nuevo grupo
+        classGroups.set(sourceId, groupId);
+        classGroups.set(targetId, groupId);
+        relatedGroups.set(groupId, [sourceId, targetId]);
+        groupId++;
+      } else if (sourceGroup && !targetGroup) {
+        // Agregar target al grupo de source
+        classGroups.set(targetId, sourceGroup);
+        relatedGroups.get(sourceGroup).push(targetId);
+      } else if (!sourceGroup && targetGroup) {
+        // Agregar source al grupo de target
+        classGroups.set(sourceId, targetGroup);
+        relatedGroups.get(targetGroup).push(sourceId);
+      } else if (sourceGroup !== targetGroup) {
+        // Unir dos grupos
+        const targetGroupClasses = relatedGroups.get(targetGroup);
+        targetGroupClasses.forEach(clsId => {
+          classGroups.set(clsId, sourceGroup);
+        });
+        relatedGroups.get(sourceGroup).push(...targetGroupClasses);
+        relatedGroups.delete(targetGroup);
+      }
+    });
+
+    // Clases sin relaciones van a un grupo propio
+    classes.forEach(cls => {
+      if (!classGroups.has(cls.id)) {
+        classGroups.set(cls.id, groupId);
+        relatedGroups.set(groupId, [cls.id]);
+        groupId++;
+      }
+    });
+
+    // Calcular posiciones usando layout circular para grupos y grid para distribución
+    const updatedClasses = [...classes];
+    
+    // Calcular centro inicial
+    const startX = 200;
+    const startY = 200;
+    
+    // Distribuir grupos en grid
+    const groupsArray = Array.from(relatedGroups.entries());
+    const cols = Math.ceil(Math.sqrt(groupsArray.length));
+    
+    groupsArray.forEach(([groupId, classIds], index) => {
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      
+      // Posición base del grupo
+      const groupX = startX + col * (CLASS_WIDTH + MIN_SPACING);
+      const groupY = startY + row * (CLASS_HEIGHT + MIN_SPACING);
+      
+      // Distribuir clases del grupo en layout circular compacto
+      const groupSize = classIds.length;
+      const radius = Math.max(80, (groupSize * 40) / (2 * Math.PI));
+      
+      classIds.forEach((classId, idx) => {
+        const classIndex = updatedClasses.findIndex(c => c.id === classId);
+        if (classIndex === -1) return;
+        
+        if (groupSize === 1) {
+          // Una sola clase - posición central
+          updatedClasses[classIndex] = {
+            ...updatedClasses[classIndex],
+            x: Math.round(groupX / GRID_SIZE) * GRID_SIZE,
+            y: Math.round(groupY / GRID_SIZE) * GRID_SIZE
+          };
+        } else {
+          // Múltiples clases - layout circular
+          const angle = (idx / groupSize) * 2 * Math.PI;
+          const offsetX = Math.cos(angle) * radius;
+          const offsetY = Math.sin(angle) * radius;
+          
+          updatedClasses[classIndex] = {
+            ...updatedClasses[classIndex],
+            x: Math.round((groupX + offsetX) / GRID_SIZE) * GRID_SIZE,
+            y: Math.round((groupY + offsetY) / GRID_SIZE) * GRID_SIZE
+          };
+        }
+      });
+    });
+
+    // Verificar y corregir solapamientos finales
+    updatedClasses.forEach((cls, i) => {
+      let attempts = 0;
+      while (attempts < 10) {
+        const hasOverlap = updatedClasses.some((other, j) => {
+          if (i === j) return false;
+          const dx = Math.abs(cls.x - other.x);
+          const dy = Math.abs(cls.y - other.y);
+          return dx < CLASS_WIDTH + 50 && dy < CLASS_HEIGHT + 50;
+        });
+        
+        if (!hasOverlap) break;
+        
+        // Desplazar ligeramente
+        cls.x += (attempts % 2 === 0 ? 1 : -1) * MIN_SPACING;
+        cls.y += (attempts % 3 === 0 ? 1 : -1) * MIN_SPACING;
+        attempts++;
+      }
+      
+      // Aplicar snap-to-grid
+      cls.x = Math.round(cls.x / GRID_SIZE) * GRID_SIZE;
+      cls.y = Math.round(cls.y / GRID_SIZE) * GRID_SIZE;
+    });
+
+    // Actualizar todas las clases
+    updatedClasses.forEach(updatedClass => {
+      handleClassUpdate(updatedClass.id, { 
+        x: updatedClass.x, 
+        y: updatedClass.y 
+      });
+    });
+
+    // Esperar un momento y luego ajustar vista
+    setTimeout(() => {
+      fitToBounds();
+    }, 300);
+  }, [classes, relations, handleClassUpdate, fitToBounds]);
 
   const handleClassDelete = (classId) => {
     setClasses(prevClasses => prevClasses.filter(cls => cls.id !== classId));
@@ -2586,6 +2775,14 @@ const exportarXMI = () => {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
+            <Button id="auto-organizar" onClick={() => {
+              autoOrganizeClasses();
+            }} $variant="primary" style={{ 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+            }}>
+              <CircleDot size={16} />
+              Auto-Organizar
+            </Button>
             <Button id="centrar-vista" onClick={() => {
               fitToBounds();
             }} $variant="primary">
@@ -2863,6 +3060,7 @@ const exportarXMI = () => {
                      relation={relation}
                      onUpdate={handleUpdateRelation}
                      onDelete={handleDeleteRelation}
+                     allClasses={classes}
                    />
                  );
                })}
