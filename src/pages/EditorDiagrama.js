@@ -1,4 +1,4 @@
-// EditorDiagrama.js - Sistema manual de diagramas UML
+// Editor de diagramas UML
 import axios from 'axios';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -144,6 +144,9 @@ const EditorDiagrama = () => {
   // Estado para el asistente IA - UNIFICADO
   const [chatAIVisible, setChatAIVisible] = useState(false);
 
+  // Estado para evitar auto-save durante actualizaciones del agente
+  const [isAgentUpdating, setIsAgentUpdating] = useState(false);
+
   // Utilidad: sanitizar posiciones de clases (evita NaN y valores indefinidos)
   const sanitizeClassesPositions = useCallback((list) => {
     const baseX = 200;
@@ -262,40 +265,51 @@ const EditorDiagrama = () => {
     
     // Re-emitir join-room
     socket.emit('join-room', id);
-    // actualizaciones del agente 
+    
+    // Escuchar cuando el agente IA actualiza el diagrama
     socket.on('agent-update', (data) => {
-      console.log('Actualizacion recibida del agente IA', data);
+      console.log('🤖 Agente actualizó el diagrama:', data);
 
+      // Pausar el auto-guardado para evitar conflictos
+      setIsAgentUpdating(true);
+
+      // Aplicar los cambios del agente al diagrama
       if (data.type === 'diagram_modified' && data.updatedDiagram) {
         const { classes: newClasses, relations: newRelations, titulo: newTitulo } = data.updatedDiagram;
+        
+        // Actualizar las clases, relaciones y título
         if (newClasses) setClasses(newClasses);
         if (newRelations) setRelations(newRelations);
         if (newTitulo) setTitulo(newTitulo);
 
+        // Notificar a otros componentes que hubo un cambio
         window.dispatchEvent(new CustomEvent('agent-update', { detail: data}));
       }
+
+      // Re-activar el auto-guardado después de 1 segundo
+      setTimeout(() => {
+        setIsAgentUpdating(false);
+        console.log('▶️ Auto-guardado reactivado');
+      }, 1000);
     });
 
     // Listener para aplicar patches de IA directamente
     const handleAIPatchApply = (event) => {
       const { patch } = event.detail;
-      console.log('Procesando patch de IA:', patch);
-      console.log('Tipo del patch:', typeof patch);
-      console.log('Es array?', Array.isArray(patch));
+      console.log('Procesando cambios de IA:', patch);
       
-      // Verificar si es un patch de operaciones o datos directos
+      // Verificar si es un objeto con clases y relaciones
       if (patch.classes && patch.relations) {
-        // Es la estructura directa de datos (como la de tu base de datos)
-        console.log('Aplicando estructura de datos completa');
-        console.log('Clases encontradas:', patch.classes.length);
-        console.log('Relaciones encontradas:', patch.relations.length);
+        console.log('Aplicando diagrama completo');
+        console.log('Clases:', patch.classes.length);
+        console.log('Relaciones:', patch.relations.length);
         
-        // Aplicar las clases
+        // Actualizar clases
         if (Array.isArray(patch.classes)) {
           setClasses(patch.classes);
         }
         
-        // Aplicar las relaciones
+        // Actualizar relaciones
         if (Array.isArray(patch.relations)) {
           setRelations(patch.relations);
         }
@@ -304,13 +318,14 @@ const EditorDiagrama = () => {
           setTitulo(patch.titulo);
         }
 
-        console.log('✅ Estructura de datos aplicada exitosamente');
+        console.log('✅ Cambios aplicados');
 
-        // Auto-save: si el patch trae contenido útil, guardarlo directamente en el backend
+        // Guardar en el servidor (solo si no está actualizando el agente)
         try {
-          const hasContent = (Array.isArray(patch.classes) && patch.classes.length > 0) || (Array.isArray(patch.relations) && patch.relations.length > 0);
-          if (hasContent) {
-            // Guardar usando el contenido del patch (evitamos depender de setState asincrónico)
+          const hasContent = (Array.isArray(patch.classes) && patch.classes.length > 0) || 
+                            (Array.isArray(patch.relations) && patch.relations.length > 0);
+          
+          if (hasContent && !isAgentUpdating) {
             const token = localStorage.getItem('token');
             if (token) {
               const payload = {
@@ -323,54 +338,65 @@ const EditorDiagrama = () => {
               axios.put(API_CONFIG.getUrl(`/api/diagramas/${id}`), payload, {
                 headers: { Authorization: `Bearer ${token}` }
               }).then(() => {
-                console.log('Auto-save: Diagrama guardado automáticamente después de aplicar patch de IA');
+                console.log('Diagrama guardado automáticamente');
               }).catch((e) => {
-                console.warn('Auto-save failed:', e?.response?.data || e.message || e);
+                console.warn('Error al guardar:', e?.response?.data || e.message);
               });
             }
+          } else if (isAgentUpdating) {
+            console.log('⏸️ Guardado pausado - agente actualizando');
           }
         } catch (e) {
-          console.warn('Error en auto-save tras aplicar patch estructural:', e);
+          console.warn('Error en guardado automático:', e);
         }
       } else if (Array.isArray(patch)) {
-        // Es un array de operaciones patch
-        console.log('Aplicando patch de operaciones');
+        // Es un array de operaciones (agregar, modificar, eliminar)
+        console.log('Aplicando operaciones');
         applyAIPatch(patch);
-        // Para patches operacionales, esperar un momento para que los setState dentro de applyAIPatch
-        // se apliquen y luego guardar el diagrama completo
-        setTimeout(() => {
-          try {
-            guardarDiagrama();
-            console.log('Auto-save: Diagrama guardado automáticamente tras patch de operaciones');
-          } catch (e) {
-            console.warn('Error auto-guardando después de patch de operaciones:', e);
-          }
-        }, 600);
-      } else if (typeof patch === 'object' && patch !== null) {
-        // Es un objeto único, verificar si es una operación válida
-        console.log('Procesando objeto único como operación');
-        if (patch.type) {
-          // Es una operación válida, convertir a array
-          applyAIPatch([patch]);
+        
+        // Guardar después de aplicar (solo si no está actualizando el agente)
+        if (!isAgentUpdating) {
           setTimeout(() => {
             try {
               guardarDiagrama();
-              console.log('Auto-save: Diagrama guardado automáticamente tras operación única de IA');
+              console.log('Diagrama guardado automáticamente');
             } catch (e) {
-              console.warn('Error auto-guardando después de operación única:', e);
+              console.warn('Error al guardar:', e);
             }
           }, 600);
         } else {
-          console.error('Objeto no tiene tipo de operación válido:', patch);
+          console.log('⏸️ Guardado pausado - agente actualizando');
+        }
+      } else if (typeof patch === 'object' && patch !== null) {
+        // Es una operación única
+        console.log('Procesando operación única');
+        if (patch.type) {
+          applyAIPatch([patch]);
+          
+          // Guardar después de aplicar (solo si no está actualizando el agente)
+          if (!isAgentUpdating) {
+            setTimeout(() => {
+              try {
+                guardarDiagrama();
+                console.log('Diagrama guardado automáticamente');
+              } catch (e) {
+                console.warn('Error al guardar:', e);
+              }
+            }, 600);
+          } else {
+            console.log('⏸️ Guardado pausado - agente actualizando');
+          }
+        } else {
+          console.error('Operación no válida:', patch);
         }
       } else {
-        console.error('Formato de patch no reconocido:', patch);
-        console.log('Estructura completa:', JSON.stringify(patch, null, 2));
+        console.error('Formato de cambios no reconocido:', patch);
       }
     };
 
     window.addEventListener('ai-patch-apply', handleAIPatchApply);
-    // Eventos de clases
+    
+    // Cuando otro usuario mueve una clase
     socket.on('class-moved', ({ classId, position }) => {
       setClasses(prevClasses =>
         prevClasses.map(cls =>
@@ -379,10 +405,12 @@ const EditorDiagrama = () => {
       );
     });
 
+    // Cuando otro usuario agrega una clase
     socket.on('class-added', ({ newClass }) => {
       setClasses(prevClasses => [...prevClasses, newClass]);
     });
 
+    // Cuando otro usuario modifica una clase
     socket.on('class-updated', ({ classId, updatedData }) => {
       setClasses(prevClasses =>
         prevClasses.map(cls =>
@@ -391,6 +419,7 @@ const EditorDiagrama = () => {
       );
     });
 
+    // Cuando otro usuario elimina una clase
     socket.on('class-deleted', ({ classId }) => {
       setClasses(prevClasses => prevClasses.filter(cls => cls.id !== classId));
       setRelations(prevRelations => 
@@ -398,11 +427,12 @@ const EditorDiagrama = () => {
       );
     });
 
-    // Eventos de relaciones
+    // Cuando otro usuario agrega una relación
     socket.on('relation-added', ({ newRelation }) => {
       setRelations(prevRelations => [...prevRelations, newRelation]);
     });
 
+    // Cuando otro usuario modifica una relación
     socket.on('relation-updated', ({ relationId, updatedData }) => {
       setRelations(prevRelations =>
         prevRelations.map(rel =>
@@ -411,18 +441,19 @@ const EditorDiagrama = () => {
       );
     });
 
+    // Cuando otro usuario elimina una relación
     socket.on('relation-deleted', ({ relationId }) => {
       setRelations(prevRelations => prevRelations.filter(rel => rel.id !== relationId));
     });
 
     return () => {
-      // Limpiar listeners al desmontar
+      // Limpiar eventos al cerrar el editor
       socket.removeAllListeners();
       window.removeEventListener('ai-patch-apply', handleAIPatchApply);
     };
-  }, [id, normalizeUsers]);
+  }, [id, normalizeUsers, isAgentUpdating, titulo]);
 
-  // Cargar diagrama
+  // Cargar diagrama inicial
   const cargarDiagrama = useCallback(async () => {
       try {
         const token = localStorage.getItem('token');
@@ -435,7 +466,7 @@ const EditorDiagrama = () => {
          const loadedClasses = diagrama.contenido.classes || [];
          const loadedRelations = diagrama.contenido.relations || [];
          
-         // Eliminar duplicados por ID
+         // Eliminar clases/relaciones duplicadas
          const uniqueClasses = loadedClasses.filter((cls, index, self) => 
            index === self.findIndex(c => c.id === cls.id)
          );
@@ -443,7 +474,7 @@ const EditorDiagrama = () => {
            index === self.findIndex(r => r.id === rel.id)
          );
          
-         // Sanitizar posiciones para evitar NaN
+         // Arreglar posiciones inválidas
          const sanitized = sanitizeClassesPositions(uniqueClasses);
          setClasses(sanitized);
          console.log('Clases cargadas:', uniqueClasses.length);
@@ -458,7 +489,7 @@ const EditorDiagrama = () => {
         }
         
         
-        setHttpConnected(true); // Marcar HTTP como conectado
+        setHttpConnected(true);
         setLoading(false);
       } catch (error) {
         console.error('Error al cargar el diagrama:', error);
@@ -471,7 +502,7 @@ const EditorDiagrama = () => {
     cargarDiagrama();
   }, [cargarDiagrama]);
 
-  // Mouse move effect for relations con mejor cálculo de posición
+  // Seguir el cursor al crear relaciones
   useEffect(() => {
   if (isCreatingRelation && selectedClass) {
       const handleMouseMove = (e) => {
@@ -489,7 +520,7 @@ const EditorDiagrama = () => {
     }
   }, [isCreatingRelation, selectedClass, zoomLevel]);
 
-  // Manejar eventos globales del mouse para el arrastre
+  // Manejar arrastre del canvas
   useEffect(() => {
     const handleGlobalMouseMove = (e) => {
       if (isPanning) {
@@ -523,17 +554,15 @@ const EditorDiagrama = () => {
     };
   }, [isPanning, panStart]);
 
-  // Inicializar motor de diagramas - SIMPLIFICADO (ya no necesitamos ProjectStorm)
   useEffect(() => {
-    // El motor manual ya está funcionando correctamente
+    // Motor de diagrama ya configurado
   }, []);
 
-  // Sistema manual de renderizado - SIMPLIFICADO
   useEffect(() => {
-    // El sistema manual ya está funcionando correctamente
+    // Sistema de renderizado ya configurado
   }, [classes, relations]);
 
-  // Evitar el zoom del navegador (Ctrl/Meta + rueda, pinch en trackpad, atajos +/-/0, y gestos en Safari)
+  // Evitar zoom accidental del navegador
   useEffect(() => {
     const preventWheelZoom = (e) => {
       if (e.ctrlKey || e.metaKey) {
@@ -554,7 +583,6 @@ const EditorDiagrama = () => {
       e.preventDefault();
     };
 
-    // Captura temprana y bloquea en todos los navegadores
     window.addEventListener('wheel', preventWheelZoom, { passive: false, capture: true });
     window.addEventListener('mousewheel', preventWheelZoom, { passive: false, capture: true });
     window.addEventListener('DOMMouseScroll', preventWheelZoom, { passive: false, capture: true });
@@ -574,12 +602,13 @@ const EditorDiagrama = () => {
     };
   }, []);
 
+  // Manejar zoom y desplazamiento con rueda/trackpad
   const handleWheel = (e) => {
     const isPinchZoom = e.ctrlKey || e.metaKey;
 
     if (isPinchZoom) {
-      // Zoom con gesto de pinza en touchpad o Ctrl+rueda
-      const delta = e.deltaY * -0.005; // Zoom suave
+      // Zoom con gesto de pinza o Ctrl+rueda
+      const delta = e.deltaY * -0.001;
       const newZoom = Math.max(0.1, Math.min(3, zoomLevel + delta));
 
       const rect = e.currentTarget.getBoundingClientRect();
@@ -593,7 +622,7 @@ const EditorDiagrama = () => {
       }));
       setZoomLevel(newZoom);
     } else {
-      // Desplazamiento con dos dedos: pan horizontal/vertical
+      // Desplazamiento normal
       setCanvasOffset(prev => ({
         x: prev.x - e.deltaX,
         y: prev.y - e.deltaY
@@ -601,9 +630,9 @@ const EditorDiagrama = () => {
     }
   };
 
-  // Manejar inicio del arrastre
+  // Inicio de arrastre del canvas (Ctrl + Click)
   const handleMouseDown = (e) => {
-    if (e.ctrlKey && e.button === 0) { // Control + Click izquierdo
+    if (e.ctrlKey && e.button === 0) {
       e.preventDefault();
       e.stopPropagation();
       setIsPanning(true);
@@ -614,7 +643,6 @@ const EditorDiagrama = () => {
     }
   };
 
-  // Manejar movimiento durante el arrastre
   const handleMouseMove = (e) => {
     if (isPanning) {
       e.preventDefault();
@@ -626,7 +654,6 @@ const EditorDiagrama = () => {
     }
   };
 
-  // Manejar fin del arrastre
   const handleMouseUp = (e) => {
     if (isPanning) {
       e.preventDefault();
@@ -635,56 +662,53 @@ const EditorDiagrama = () => {
     }
   };
 
-  // Prevenir el menú contextual en Control + Click derecho
   const handleContextMenu = (e) => {
     if (e.ctrlKey) {
       e.preventDefault();
     }
   };
 
-  // Función para aplicar patches de IA al diagrama
+  // Aplicar cambios del agente al diagrama
   const applyAIPatch = (patch) => {
     try {
-      console.log('Aplicando patch de IA:', patch);
+      console.log('Aplicando cambios del agente:', patch);
       
-      // Verificar que patch sea un array válido
       if (!Array.isArray(patch)) {
-        console.error('Patch no es un array válido:', patch);
+        console.error('Cambios no válidos:', patch);
         return;
       }
       
       patch.forEach((change, index) => {
         try {
-          console.log(`Procesando cambio ${index + 1}:`, change);
+          console.log(`Cambio ${index + 1}:`, change);
           
           switch (change.type) {
             case 'modify_class':
-              // Modificar una clase existente
+              // Modificar clase existente
               if (change.id && change.data) {
                 setClasses(prevClasses =>
                   prevClasses.map(cls =>
                     cls.id === change.id ? { ...cls, ...change.data } : cls
                   )
                 );
-                console.log(`Clase ${change.id} modificada con datos:`, change.data);
+                console.log(`Clase ${change.id} modificada`);
               } else {
-                console.warn('⚠️ Datos incompletos para modify_class:', change);
+                console.warn('⚠️ Datos incompletos:', change);
               }
               break;
               
                  case 'add_class':
-                   // Agregar una nueva clase
+                   // Agregar nueva clase
                    const classData = change.data || change;
                    if (classData.id && classData.name) {
-                     // Calcular posición mejorada para evitar solapamiento en espacio expandido
+                     // Calcular posición para evitar solapamiento
                      const baseX = 300;
                      const baseY = 300;
                      const spacingX = 400;
                      const spacingY = 300;
                      
-                     // Usar el índice del cambio para calcular posición
                      const index = patch.findIndex(p => p === change);
-                     const row = Math.floor(index / 4); // 4 clases por fila
+                     const row = Math.floor(index / 4);
                      const col = index % 4;
                      
                      const newClass = {
@@ -696,28 +720,28 @@ const EditorDiagrama = () => {
                        methods: classData.methods || []
                      };
                      setClasses(prevClasses => [...prevClasses, newClass]);
-                     console.log(`Clase ${classData.name} agregada en posición (${newClass.x}, ${newClass.y}):`, newClass);
+                     console.log(`Clase ${classData.name} agregada`);
                    } else {
-                     console.warn('⚠️ Datos incompletos para add_class:', change);
+                     console.warn('⚠️ Datos incompletos:', change);
                    }
                    break;
               
             case 'modify_relation':
-              // Modificar una relación existente
+              // Modificar relación existente
               if (change.id && change.data) {
                 setRelations(prevRelations =>
                   prevRelations.map(rel =>
                     rel.id === change.id ? { ...rel, ...change.data } : rel
                   )
                 );
-                console.log(`Relación ${change.id} modificada con datos:`, change.data);
+                console.log(`Relación ${change.id} modificada`);
               } else {
-                console.warn('⚠️ Datos incompletos para modify_relation:', change);
+                console.warn('⚠️ Datos incompletos:', change);
               }
               break;
               
             case 'add_relation':
-              // Agregar una nueva relación
+              // Agregar nueva relación
               if (change.data && change.data.id) {
                 const newRelation = {
                   id: change.data.id,
@@ -728,54 +752,53 @@ const EditorDiagrama = () => {
                   multiplicidadDestino: change.data.multiplicidadDestino
                 };
                 setRelations(prevRelations => [...prevRelations, newRelation]);
-                console.log(`Relación ${change.data.type} agregada:`, newRelation);
+                console.log(`Relación ${change.data.type} agregada`);
               } else {
-                console.warn('⚠️ Datos incompletos para add_relation:', change);
+                console.warn('⚠️ Datos incompletos:', change);
               }
               break;
               
             case 'remove_relation':
-              // Eliminar una relación
+              // Eliminar relación
               if (change.id) {
                 setRelations(prevRelations =>
                   prevRelations.filter(rel => rel.id !== change.id)
                 );
                 console.log(`Relación ${change.id} eliminada`);
               } else {
-                console.warn('⚠️ ID faltante para remove_relation:', change);
+                console.warn('⚠️ ID faltante:', change);
               }
               break;
               
             case 'remove_class':
-              // Eliminar una clase
+              // Eliminar clase y sus relaciones
               if (change.id) {
                 setClasses(prevClasses => prevClasses.filter(cls => cls.id !== change.id));
-                // También eliminar relaciones que involucren esta clase
                 setRelations(prevRelations =>
                   prevRelations.filter(rel => rel.source !== change.id && rel.target !== change.id)
                 );
                 console.log(`Clase ${change.id} eliminada`);
               } else {
-                console.warn('⚠️ ID faltante para remove_class:', change);
+                console.warn('⚠️ ID faltante:', change);
               }
               break;
               
             default:
-              console.warn('⚠️ Tipo de cambio no reconocido:', change.type, change);
+              console.warn('⚠️ Tipo desconocido:', change.type, change);
           }
         } catch (changeError) {
-          console.error(`Error procesando cambio ${index + 1}:`, changeError, change);
+          console.error(`Error en cambio ${index + 1}:`, changeError, change);
         }
       });
       
       
-      console.log('Patch de IA aplicado exitosamente');
+      console.log('Cambios aplicados');
     } catch (error) {
-      console.error('Error aplicando patch de IA:', error);
+      console.error('Error aplicando cambios:', error);
     }
   };
 
-  // Función para ajustar zoom y centrar contenido automáticamente (usa viewport visible)
+  // Ajustar zoom para ver todo el diagrama
   const fitToBounds = useCallback((padding = 80) => {
     if (classes.length === 0) return;
 
@@ -787,9 +810,9 @@ const EditorDiagrama = () => {
     const xs = classes.map(c => Number.isFinite(c.x) ? c.x : 0);
     const ys = classes.map(c => Number.isFinite(c.y) ? c.y : 0);
     const minX = Math.min(...xs);
-    const maxX = Math.max(...xs.map((x, i) => x + 300)); // ancho aprox
+    const maxX = Math.max(...xs.map((x, i) => x + 300));
     const minY = Math.min(...ys);
-    const maxY = Math.max(...ys.map((y, i) => y + 200)); // alto aprox
+    const maxY = Math.max(...ys.map((y, i) => y + 200));
 
     const contentW = Math.max(1, maxX - minX);
     const contentH = Math.max(1, maxY - minY);
@@ -811,7 +834,7 @@ const EditorDiagrama = () => {
   }, [classes]);
 
 
-  // Ajustar vista automáticamente solo una vez al cargar el diagrama
+  // Auto-ajustar vista al cargar
   useEffect(() => {
     if (!isLoading && classes.length > 0 && !hasAutoFitRef.current) {
       hasAutoFitRef.current = true;
@@ -821,19 +844,21 @@ const EditorDiagrama = () => {
     }
   }, [isLoading, classes, fitToBounds]);
 
-  // Reiniciar el flag cuando cambia de diagrama
+  // Reset al cambiar de diagrama
   useEffect(() => {
     hasAutoFitRef.current = false;
   }, [id]);
 
 
   const handleClassUpdate = (classId, updatedData) => {
+    // Actualizar clase localmente
     setClasses(prevClasses =>
       prevClasses.map(cls =>
         cls.id === classId ? { ...cls, ...updatedData } : cls
       )
     );
 
+    // Notificar a otros usuarios
     if (socketRef.current) {
       socketRef.current.emit('update-class', {
         roomId: id,
@@ -843,21 +868,20 @@ const EditorDiagrama = () => {
     }
   };
 
-  // Función de auto-organización inteligente usando algoritmo force-directed simplificado
+  // Organizar clases automáticamente
   const autoOrganizeClasses = useCallback(() => {
     if (classes.length === 0) return;
 
     const CLASS_WIDTH = 300;
     const CLASS_HEIGHT = 150;
-    const MIN_SPACING = 350; // Espaciado mínimo entre clases
-    const GRID_SIZE = 100; // Tamaño del grid para snap
+    const MIN_SPACING = 350;
+    const GRID_SIZE = 100;
     
-    // Crear un mapa de relaciones para agrupar clases relacionadas
+    // Agrupar clases por relaciones
     const relatedGroups = new Map();
     const classGroups = new Map();
     let groupId = 0;
 
-    // Agrupar clases por relaciones
     relations.forEach(rel => {
       const sourceId = rel.source;
       const targetId = rel.target;
@@ -866,21 +890,17 @@ const EditorDiagrama = () => {
       const targetGroup = classGroups.get(targetId);
       
       if (!sourceGroup && !targetGroup) {
-        // Crear nuevo grupo
         classGroups.set(sourceId, groupId);
         classGroups.set(targetId, groupId);
         relatedGroups.set(groupId, [sourceId, targetId]);
         groupId++;
       } else if (sourceGroup && !targetGroup) {
-        // Agregar target al grupo de source
         classGroups.set(targetId, sourceGroup);
         relatedGroups.get(sourceGroup).push(targetId);
       } else if (!sourceGroup && targetGroup) {
-        // Agregar source al grupo de target
         classGroups.set(sourceId, targetGroup);
         relatedGroups.get(targetGroup).push(sourceId);
       } else if (sourceGroup !== targetGroup) {
-        // Unir dos grupos
         const targetGroupClasses = relatedGroups.get(targetGroup);
         targetGroupClasses.forEach(clsId => {
           classGroups.set(clsId, sourceGroup);
@@ -890,7 +910,7 @@ const EditorDiagrama = () => {
       }
     });
 
-    // Clases sin relaciones van a un grupo propio
+    // Clases solas van a su propio grupo
     classes.forEach(cls => {
       if (!classGroups.has(cls.id)) {
         classGroups.set(cls.id, groupId);
@@ -899,14 +919,12 @@ const EditorDiagrama = () => {
       }
     });
 
-    // Calcular posiciones usando layout circular para grupos y grid para distribución
     const updatedClasses = [...classes];
     
-    // Calcular centro inicial
     const startX = 200;
     const startY = 200;
     
-    // Distribuir grupos en grid
+    // Distribuir grupos
     const groupsArray = Array.from(relatedGroups.entries());
     const cols = Math.ceil(Math.sqrt(groupsArray.length));
     
@@ -914,7 +932,6 @@ const EditorDiagrama = () => {
       const row = Math.floor(index / cols);
       const col = index % cols;
       
-      // Posición base del grupo
       const groupX = startX + col * (CLASS_WIDTH + MIN_SPACING);
       const groupY = startY + row * (CLASS_HEIGHT + MIN_SPACING);
       
@@ -1181,25 +1198,27 @@ const EditorDiagrama = () => {
     setLoading(true);
     
     try {
-      const response = await fetch(API_CONFIG.getUrl(`/api/openapi/generate-backend/${id}`), {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      // Usar axios con timeout extendido para peticiones largas (generar proyecto puede tardar)
+      // Usamos 'blob' para poder manejar tanto ZIP como JSON/texto
+      const response = await axios.post(
+        API_CONFIG.getUrl(`/api/openapi/generate-backend/${id}`),
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 300000, // 5 minutos de timeout para procesos largos
+          responseType: 'blob' // Permite manejar tanto ZIP como JSON/texto
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
-      }
+      );
       
       // Verificar el tipo de contenido de la respuesta
-      const contentType = response.headers.get('content-type');
+      const contentType = response.headers['content-type'] || response.headers['Content-Type'] || '';
       
-      if (contentType && contentType.includes('application/zip')) {
-        // Si es un ZIP, manejarlo como blob
-        const blob = await response.blob();
-        const zipUrl = window.URL.createObjectURL(blob);
+      if (contentType.includes('application/zip')) {
+        // Si es un ZIP, response.data ya es un Blob
+        const zipUrl = window.URL.createObjectURL(response.data);
         setZipDownloadUrl(zipUrl);
         setJdlContent('Archivo ZIP generado exitosamente');
         setExportError(null);
@@ -1213,9 +1232,10 @@ const EditorDiagrama = () => {
         document.body.removeChild(link);
         
         alert('¡Proyecto Spring Boot generado y descargado exitosamente!');
-      } else if (contentType && contentType.includes('application/json')) {
-        // Si es JSON, manejarlo normalmente
-        const result = await response.json();
+      } else if (contentType.includes('application/json')) {
+        // Si es JSON, leer el blob como texto y parsearlo
+        const text = await response.data.text();
+        const result = JSON.parse(text);
         
         if (result.success) {
           setJdlContent(result.jdlContent);
@@ -1235,24 +1255,60 @@ const EditorDiagrama = () => {
           
           setExportError(null);
           alert('¡Proyecto Spring Boot generado exitosamente!');
-      } else {
+        } else {
           setExportError(result.message || 'No se pudo generar el JDL.');
           setJdlContent(null);
           setZipDownloadUrl(null);
-      }
+        }
       } else {
         // Intentar como texto plano (podría ser JDL directo)
-        const textResult = await response.text();
+        const textResult = await response.data.text();
         setJdlContent(textResult);
         setExportError(null);
         alert('¡JDL generado exitosamente!');
       }
     } catch (error) {
       console.error('Error generando proyecto:', error);
-      setExportError('Error generando proyecto: ' + error.message);
+      
+      // Detectar diferentes tipos de errores con axios
+      let errorMessage = 'Error generando proyecto: ';
+      
+      if (error.response) {
+        // El servidor respondió con un código de error (4xx, 5xx)
+        errorMessage += `Error HTTP ${error.response.status}: ${error.response.statusText || 'Error del servidor'}`;
+        if (error.response.data) {
+          try {
+            const errorData = typeof error.response.data === 'string' 
+              ? JSON.parse(error.response.data) 
+              : error.response.data;
+            if (errorData.message) {
+              errorMessage += ` - ${errorData.message}`;
+            }
+          } catch (e) {
+            // Si no se puede parsear, usar el mensaje genérico
+          }
+        }
+      } else if (error.code === 'ERR_NETWORK' || (error.request && error.code !== 'ECONNABORTED')) {
+        // Error de red específico (ERR_NETWORK, ERR_CONNECTION_REFUSED)
+        errorMessage = `Error de conexión al intentar generar el proyecto Spring Boot.\n\n` +
+          `El endpoint /api/openapi/generate-backend/${id} no está disponible o el servidor lo está rechazando.\n\n` +
+          `Posibles causas:\n` +
+          `- El endpoint no está implementado en el backend\n` +
+          `- El servidor backend no está escuchando en ${API_CONFIG.BASE_URL}\n` +
+          `- Problema de configuración del servidor o firewall\n\n` +
+          `Verifica en el backend que la ruta POST /api/openapi/generate-backend/:id esté configurada correctamente.`;
+      } else if (error.code === 'ECONNABORTED') {
+        // Timeout
+        errorMessage = `La generación del proyecto tomó demasiado tiempo (timeout). El proceso puede estar tardando más de lo esperado.`;
+      } else {
+        // Error al configurar la petición o error desconocido
+        errorMessage += error.message || 'Error desconocido';
+      }
+      
+      setExportError(errorMessage);
       setJdlContent(null);
       setZipDownloadUrl(null);
-      alert('Error al generar el proyecto: ' + error.message);
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
